@@ -1,0 +1,36 @@
+{"id": "en-short-01", "lang": "en", "category": "short", "style": "normal", "text": "Sounds good, thanks!"}
+{"id": "en-short-02", "lang": "en", "category": "short", "style": "normal", "text": "On my way."}
+{"id": "en-short-03", "lang": "en", "category": "short", "style": "quick, casual", "text": "Can we push this to tomorrow?"}
+{"id": "en-short-04", "lang": "en", "category": "short", "style": "normal", "text": "Yes, I reviewed the pull request and left two comments."}
+{"id": "en-med-01", "lang": "en", "category": "medium", "style": "normal", "text": "Hi Sarah, I wanted to follow up on yesterday's meeting. Could you send me the slides when you get a chance? I'd like to review the budget section before Friday."}
+{"id": "en-med-02", "lang": "en", "category": "medium", "style": "normal", "text": "The main issue is that the cache gets invalidated every time the config file changes, so the first request after a deploy is always slow."}
+{"id": "en-med-03", "lang": "en", "category": "medium", "style": "fast", "text": "I think we should ship the smaller version first, get feedback from a few users, and then decide whether the extra features are worth the added complexity."}
+{"id": "en-med-04", "lang": "en", "category": "medium", "style": "slow, with pauses between sentences", "text": "Let me think about that. I'm not sure the timeline works. Let's talk tomorrow morning."}
+{"id": "en-med-05", "lang": "en", "category": "medium", "style": "normal", "text": "My flight lands around nine in the evening, so I probably won't make it to dinner, but I can meet you for breakfast on Saturday."}
+{"id": "en-long-01", "lang": "en", "category": "long", "style": "normal", "text": "Thanks everyone for joining today. Quick recap of where we are. The data pipeline is finally stable and we haven't had a failed nightly run in two weeks. The dashboard is mostly done, but the export feature still has a bug with large files. For next sprint, I'd like us to focus on performance, especially the search page, which takes almost four seconds to load. If anyone has ideas on caching, please add them to the doc before Thursday."}
+{"id": "en-long-02", "lang": "en", "category": "long", "style": "normal, like a voice note", "text": "So I tried the new approach this afternoon and it works much better than I expected. The model converges in about half the epochs, and the validation loss is lower too. The one thing I'm worried about is that it seems sensitive to the learning rate, so we should probably run a small sweep before we commit to it. I'll write up the results tonight and share them in the channel."}
+{"id": "en-long-03", "lang": "en", "category": "long", "style": "fast", "text": "Here's what I need from you before the launch. First, double check that the pricing page matches the new plans. Second, make sure the onboarding emails go out in the right order. Third, ask the support team to prepare answers for the most common billing questions. And finally, let me know if anything is blocked so I can help unblock it."}
+{"id": "en-num-01", "lang": "en", "category": "numbers", "style": "normal", "text": "The meeting is at 5:30 PM on March 3rd in room 214."}
+{"id": "en-num-02", "lang": "en", "category": "numbers", "style": "normal", "text": "Revenue grew 12% to $4.5 million in the third quarter."}
+{"id": "en-num-03", "lang": "en", "category": "numbers", "style": "normal", "text": "Send it to john.smith@example.com and copy the team at dev-team@company.org."}
+{"id": "en-num-04", "lang": "en", "category": "numbers", "style": "normal", "text": "You can find the docs at docs.python.org, version 3.12, section 4.2."}
+{"id": "en-tech-01", "lang": "en", "category": "jargon", "style": "normal", "text": "We deploy the API on Kubernetes and store the embeddings in PostgreSQL with pgvector."}
+{"id": "en-tech-02", "lang": "en", "category": "jargon", "style": "normal", "text": "The PyTorch model is exported to ONNX and quantized to int8 for the CPU build."}
+{"id": "en-tech-03", "lang": "en", "category": "jargon", "style": "normal", "text": "Run npm install, then open the JSON config and set the OAuth redirect URL to localhost."}
+{"id": "en-tech-04", "lang": "en", "category": "jargon", "style": "normal", "text": "The GitHub Actions workflow fails because the Docker image can't find the CUDA libraries."}
+{"id": "en-names-01", "lang": "en", "category": "names", "style": "normal", "text": "Please loop in Priya, Mateo, and Siobhan from the Toronto office."}
+{"id": "en-names-02", "lang": "en", "category": "names", "style": "normal", "text": "I met with Dr. Nakamura and Professor Okonkwo at the University of Toronto."}
+{"id": "en-question-01", "lang": "en", "category": "question", "style": "normal", "text": "What's the best way to handle retries when the payment provider times out?"}
+{"id": "en-instruction-01", "lang": "en", "category": "instruction", "style": "normal", "text": "Write an email to Alex telling him the meeting moved to Thursday."}
+{"id": "en-disfluent-01", "lang": "en", "category": "disfluent", "style": "read the um and uh naturally", "text": "So um I think we should uh move the deadline, like, by a week or so."}
+{"id": "en-disfluent-02", "lang": "en", "category": "disfluent", "style": "read naturally, including the correction", "text": "Let's meet on Tuesday, no wait, Wednesday at noon."}
+{"id": "en-disfluent-03", "lang": "en", "category": "disfluent", "style": "read naturally, including the repeat", "text": "The the main thing is, you know, we we need more time for testing."}
+{"id": "en-commands-01", "lang": "en", "category": "commands", "style": "pause briefly around 'new paragraph'", "text": "Hi team. New paragraph. The release is scheduled for Monday."}
+{"id": "es-01", "lang": "es", "category": "medium", "style": "normal", "text": "Hola Marta, ¿puedes enviarme el informe antes del viernes? Necesito revisarlo con el equipo."}
+{"id": "es-02", "lang": "es", "category": "numbers", "style": "normal", "text": "La reunión es a las cinco y media en la sala 3, y el presupuesto es de dos mil euros."}
+{"id": "es-03", "lang": "es", "category": "long", "style": "normal", "text": "Ayer probamos la nueva versión de la aplicación y funciona bastante mejor. Todavía hay un error al exportar archivos grandes, pero creo que lo podemos resolver esta semana."}
+{"id": "es-04", "lang": "es", "category": "short", "style": "normal", "text": "Perfecto, nos vemos mañana."}
+{"id": "fr-01", "lang": "fr", "category": "medium", "style": "normal", "text": "Bonjour Julien, est-ce que tu peux m'envoyer le rapport avant vendredi ? J'aimerais le relire avec l'équipe."}
+{"id": "fr-02", "lang": "fr", "category": "numbers", "style": "normal", "text": "La réunion est à dix-sept heures trente dans la salle 12, et le budget est de trois mille euros."}
+{"id": "fr-03", "lang": "fr", "category": "long", "style": "normal", "text": "Nous avons testé la nouvelle version hier et elle fonctionne beaucoup mieux. Il reste un bug avec les gros fichiers, mais on devrait pouvoir le corriger cette semaine."}
+{"id": "fr-04", "lang": "fr", "category": "short", "style": "normal", "text": "D'accord, à demain."}

@@ -1,0 +1,18 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Your voice recordings stay on this machine
+bench/asr/clips/
+bench/reports/
+
+# Models live in %LOCALAPPDATA%\dictate\models, but just in case
+*.onnx
+*.onnx.data
+*.gguf
