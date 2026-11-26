@@ -18,7 +18,15 @@ def test_default_config_parses() -> None:
     assert cfg.client.language == "en"
     assert cfg.server.port == 8765 and cfg.server.cleanup
     assert cfg.cleanup.model == "gemma-4-e2b"
-    assert cfg.commands.phrases["fr"]["new_line"] == ["nouvelle ligne", "à la ligne"]
+    assert cfg.commands.phrases["fr"]["new_line"][:2] == ["nouvelle ligne", "à la ligne"]
+    assert cfg.commands.phrases["en"]["comma"] == ["comma"]
+
+
+def test_custom_phrases_merge_with_defaults() -> None:
+    cfg = parse_config('[commands.phrases.en]\nnew_line = ["newline please"]\n')
+    assert cfg.commands.phrases["en"]["new_line"] == ["newline please"]
+    assert cfg.commands.phrases["en"]["comma"] == ["comma"]  # the other defaults are kept
+    assert cfg.commands.phrases["es"]["comma"] == ["coma"]
 
 
 def test_short_server_keys_drive_the_engine() -> None:

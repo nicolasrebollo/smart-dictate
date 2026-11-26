@@ -19,7 +19,8 @@ _RULES = """You are a dictation cleanup engine. You receive raw speech-to-text o
 Do:
 - Remove filler words (um, uh, like, you know, I mean, sort of - only when used as filler), stutters, repeated words, and false starts.
 - Self-corrections: when the speaker corrects themselves ("no", "no wait", "actually", "I mean", "sorry", "make that", "or rather"), keep only the final version and drop the correction words.
-- Fix punctuation, capitalization, and sentence breaks. Keep every line break that is already in the transcript.
+- Fix punctuation, capitalization, and sentence breaks. Keep every line break that is already in the transcript exactly as it is.
+- Paragraphs: in a long dictation with no line breaks, start a new paragraph (blank line) where the topic clearly changes. A short message stays one paragraph.
 - Format clearly enumerated items ("first... second...", "one... two...") as a numbered list, one item per line. Leave ordinary comma lists in the sentence.
 - Numbers: write 10 and above as digits ("fifteen" -> "15", "two hundred fifty" -> "250"). Always use digits and symbols for times (5:30 PM), dates (March 3rd), years (2026), money ($45, $4.5 million), percentages (12%), units (20 MB, 500 ms, 1.4 kg), versions (2.3.1), and phone numbers (416-555-0192). Spell out one to nine in ordinary prose ("two weeks").
 - Write emails, URLs, handles, file names, and paths in their normal written form ("anna dot lee at gmail dot com" -> "anna.lee@gmail.com", "at acme underscore labs" -> "@acme_labs").
@@ -115,6 +116,17 @@ _EXAMPLES_EN = [
         "Rename OrderItem to LineItem in the --dry-run output.",
     ),
     Example("Hi Maria,\nThanks for, uh, sending this over.", "Hi Maria,\nThanks for sending this over."),
+    Example(
+        "hey jordan thanks for sending the deck over I went through it this morning and it looks great "
+        "one thing the pricing slide still shows last year's numbers can you update it before friday thanks priya",
+        "Hey Jordan, thanks for sending the deck over. I went through it this morning and it looks great. "
+        "One thing: the pricing slide still shows last year's numbers. Can you update it before Friday? "
+        "Thanks, Priya.",
+    ),
+    Example(
+        "hi ben thanks for the notes the second section reads much better now",
+        "Hi Ben, thanks for the notes. The second section reads much better now.",
+    ),
 ]
 
 _EXAMPLES_LANG = {

@@ -54,6 +54,26 @@ class _Rules:
     correction: re.Pattern[str]
     continuation: re.Pattern[str]
     list_cue: re.Pattern[str]
+    open_end: re.Pattern[str] | None = None  # a spoken "comma" / "open quote" ends the segment
+    mark_start: re.Pattern[str] | None = None  # a spoken "period" / "question mark" starts the next one
+
+
+def _phrases_rx(language: str, names: set[str], *, at_end: bool) -> re.Pattern[str] | None:
+    from dictate.cleanup.commands import _alt
+    from dictate.config import DEFAULT_PHRASES
+
+    phrases = [p for n, ps in DEFAULT_PHRASES.get(language, {}).items() if n in names for p in ps]
+    if not phrases:
+        return None
+    alts = "|".join(_alt(p) for p in sorted(phrases, key=len, reverse=True))
+    if at_end:
+        return re.compile(r"(?<![\w'’])(?:" + alts + r")[\W]*$", re.IGNORECASE)
+    return re.compile(r"^\W*(?:" + alts + r")(?![\w'’])", re.IGNORECASE)
+
+
+_OPEN_MARKS = {"comma", "colon", "semicolon", "open_quote", "open_paren", "open_question", "open_exclamation"}
+_CLOSE_MARKS = {"comma", "period", "question_mark", "exclamation_mark", "colon", "semicolon", "ellipsis",
+                "close_quote", "close_paren"}  # fmt: skip
 
 
 def rules_for(language: str) -> _Rules:
@@ -62,6 +82,8 @@ def rules_for(language: str) -> _Rules:
         correction=_start_rx(_CORRECTION_START[lang]),
         continuation=_start_rx(_CONTINUATION_START[lang]),
         list_cue=_start_rx(_LIST_CUE[lang]),
+        open_end=_phrases_rx(lang, _OPEN_MARKS, at_end=True),
+        mark_start=_phrases_rx(lang, _CLOSE_MARKS, at_end=False),
     )
 
 
@@ -71,6 +93,10 @@ def safe_boundary(left: str, right: str, rules: _Rules) -> bool:
     if not left:
         return True
     if not re.search(r"[.!?]['\")\]]*$", left):
+        return False
+    if rules.open_end is not None and rules.open_end.search(left):
+        return False
+    if right and rules.mark_start is not None and rules.mark_start.match(right):
         return False
     if right and (rules.correction.match(right) or rules.continuation.match(right)):
         return False

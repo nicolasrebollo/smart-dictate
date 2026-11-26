@@ -11,6 +11,7 @@ import numpy.typing as npt
 from dictate.asr.base import ASRBackend
 from dictate.cleanup.formatter import FormatOptions, post_format, post_format_llm, pre_format
 from dictate.cleanup.incremental import IncrementalCleaner, join_chunks
+from dictate.cleanup.layout import layout_message
 from dictate.cleanup.llm_cleanup import Cleaner
 from dictate.cleanup.skip import llm_reason
 from dictate.config import Config
@@ -66,7 +67,7 @@ class Pipeline:
 
         res = self.clean_text(asr_text, raw=raw, timings=t)
         res.audio_s, res.speech_s, res.chunks = audio_s, trimmed.speech_ms / 1000, len(chunks)
-        return res
+        return self._layout(res, raw)
 
     def clean_text(self, asr_text: str, *, raw: bool = False, timings: Timings | None = None) -> PipelineResult:
         """Transcript -> final text: commands/fillers -> LLM cleanup (unless raw) -> known terms."""
@@ -91,12 +92,12 @@ class Pipeline:
             res.model_output = cr.model_output
             if cr.used_llm:
                 with t.stage("post"):
-                    res.text = post_format_llm(cr.text, opts)
+                    res.text = pre.wrap(post_format_llm(cr.text, opts))
                 res.used_llm = True
                 return res
             res.fallback_reason = cr.fallback_reason
         with t.stage("post"):
-            res.text = post_format(pre.text, opts)
+            res.text = pre.wrap(post_format(pre.text, opts, final_period=not pre.trail))
         return res
 
     @property
@@ -123,7 +124,7 @@ class Pipeline:
         if incremental is None or raw or not self.llm_active:
             if incremental is not None:
                 incremental.abandon()
-            return self.clean_text(asr_text, raw=raw, timings=t)
+            return self._layout(self.clean_text(asr_text, raw=raw, timings=t), raw)
         with t.stage("llm_wait"):
             locked, tail = incremental.finalize(segment_texts[-1] if segment_texts else "")
         tail_res = self.clean_text(tail, timings=t) if tail.strip() else None
@@ -135,6 +136,18 @@ class Pipeline:
         res.scratch_previous = bool(parts) and parts[0].scratch_previous
         res.chunks = len(parts)
         res.locked_chunks = len(locked)
+        return self._layout(res, raw)
+
+    def _layout(self, res: PipelineResult, raw: bool) -> PipelineResult:
+        """Greeting / sign-off on their own lines, on the whole message (not per streamed chunk).
+        Skipped in raw mode and when the speaker dictated their own line breaks."""
+        if raw or not self.cfg.formatter.layout or not res.text.strip():
+            return res
+        pre = pre_format(res.asr_text, FormatOptions.from_config(self.cfg))
+        if "\n" in pre.lead + pre.text + pre.trail:
+            return res
+        body = res.text.strip()
+        res.text = res.text.replace(body, layout_message(body), 1)
         return res
 
 

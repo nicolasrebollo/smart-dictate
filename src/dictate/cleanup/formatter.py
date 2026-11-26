@@ -72,6 +72,13 @@ class FormatOptions:
 class FormatResult:
     text: str
     scratch_previous: bool = False
+    lead: str = ""  # line breaks dictated before the text ("new paragraph, Thanks for...")
+    trail: str = ""  # ... and after it ("Hi Sam, new line"): kept so the next words start there
+
+    def wrap(self, text: str) -> str:
+        if not text:  # only a break was dictated ("new paragraph")
+            return (self.lead + self.trail)[:2]
+        return self.lead + text + self.trail
 
 
 # Words after which a comma is natural even once the filler is gone ("So, um, I think" -> "So, I think").
@@ -154,11 +161,22 @@ def add_final_period(text: str) -> str:
     return body + trailing
 
 
+def _split_edges(text: str) -> tuple[str, str, str]:
+    """'\\n\\nThanks\\n' -> ('\\n\\n', 'Thanks', '\\n')"""
+    body = text.strip()
+    if not body:
+        return "\n" * min(2, text.count("\n")), "", ""
+    i, j = text.index(body), text.rindex(body) + len(body)
+    return "\n" * min(2, text[:i].count("\n")), body, "\n" * min(2, text[j:].count("\n"))
+
+
 def pre_format(text: str, opts: FormatOptions) -> FormatResult:
     scratch_previous = False
+    lead = trail = ""
     if opts.commands_enabled and opts.phrases:
-        res = apply_commands(text, opts.phrases)
+        res = apply_commands(text, opts.phrases, opts.language)
         text, scratch_previous = res.text, res.scratch_previous
+        lead, text, trail = _split_edges(text)
     if opts.spoken_identifiers:
         text = apply_identifiers(text)
     if opts.vocabulary:
@@ -167,15 +185,16 @@ def pre_format(text: str, opts: FormatOptions) -> FormatResult:
         text = remove_fillers(text, opts.language)
     if opts.collapse_repeats:
         text = collapse_repeats(text, opts.language)
-    return FormatResult(text=tidy_spacing(text, opts.language), scratch_previous=scratch_previous)
+    return FormatResult(tidy_spacing(text, opts.language), scratch_previous, lead, trail)
 
 
-def post_format(text: str, opts: FormatOptions) -> str:
+def post_format(text: str, opts: FormatOptions, *, final_period: bool = True) -> str:
+    """`final_period=False` when a line break was dictated right after ("Dear team, new line")."""
     text = tidy_spacing(text, opts.language)
     if not text:
         return ""
     text = capitalize(text, opts.language)
-    if opts.final_period:
+    if opts.final_period and final_period:
         text = add_final_period(text)
     return _finish(text, opts)
 
@@ -211,4 +230,4 @@ def _finish(text: str, opts: FormatOptions) -> str:
 
 def format_raw(text: str, opts: FormatOptions) -> FormatResult:
     pre = pre_format(text, opts)
-    return FormatResult(text=post_format(pre.text, opts), scratch_previous=pre.scratch_previous)
+    return FormatResult(pre.wrap(post_format(pre.text, opts, final_period=not pre.trail)), pre.scratch_previous)

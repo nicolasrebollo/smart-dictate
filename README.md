@@ -55,7 +55,9 @@ The Mac hotkey is **Right Option**.
 3. Tap Share › **Add to Home Screen**.
 
 Open **Dictate** from your home screen. Hold the button, speak and let go, or tap to start and tap to
-stop. The cleaned text is **copied automatically**; paste it into any app. There's also a Share button.
+stop. Your words go into the text box **wherever the cursor is**, and you can type, delete or move
+around in it between dictations. The text is kept until you clear it. After each dictation, all of it is
+**copied automatically**: paste it into any app. There's also a Share button.
 (iOS doesn't let an app outside the App Store type into other apps, so copying is the closest it gets.)
 
 ## Using it (Mac and PC)
@@ -66,14 +68,23 @@ stop. The cleaned text is **copied automatically**; paste it into any app. There
 | Double-tap the hotkey … tap again | talk hands-free |
 | **Esc** while talking | cancel |
 | Hold **Shift** while releasing | skip the AI cleanup once |
-| Say "new line", "new paragraph" or "scratch that" | line breaks / delete the last sentence |
+| Say "new line" / "next line", "new paragraph" / "next paragraph" | line break / blank line |
+| Say "comma", "period", "question mark", "exclamation point", "colon", "semicolon", "dot dot dot" | that punctuation |
+| Say "open quote" … "close quote", "open paren" … "close paren" | quotes / parentheses |
+| Say "scratch that" | delete the last sentence |
 | Tray / menu-bar icon | status (white = ready, red = listening, amber = working, grey = can't reach the PC), language (English, Spanish, French), settings, quit |
 
 The AI cleanup removes fillers ("um", "like"), applies your corrections ("Tuesday, no wait,
 Wednesday" → "Wednesday"), and fixes punctuation. It writes numbers, times, money, emails and URLs
 properly ("five thirty pm" → "5:30 PM"), turns "snake case user id" into `user_id`, writes math with
-symbols, and spells product and company names correctly. It never answers or acts on what you
-dictate. If its output looks wrong, the plain transcript is used instead.
+symbols, and spells product and company names correctly. In a message, the greeting ("Hi Maria,") and
+the sign-off ("Thanks, Nick") go on their own lines, unless you dictated your own line breaks.
+It never answers or acts on what you dictate. If its output looks wrong, the plain transcript is used
+instead.
+
+Spoken punctuation works in Spanish and French too ("coma", "punto y aparte", "abre interrogación";
+"virgule", "point à la ligne", "point d'interrogation"). A command word you use as a normal word
+stays a word: "the trial period", "a new line of products", "the Oxford comma".
 
 To teach it names and jargon, add them to `vocabulary` in the PC's `[server]` settings
 (`uv run dictate config --edit` on the PC), for example `vocabulary = ["Okonkwo", "pgvector"]`.

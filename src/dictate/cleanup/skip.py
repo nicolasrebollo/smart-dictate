@@ -75,6 +75,16 @@ def _patterns(language: str) -> list[tuple[str, re.Pattern[str]]]:
     return _CACHE[language]
 
 
+_GREETING = re.compile(
+    r"^\W*(?:hi|hey|hello|dear|good (?:morning|afternoon|evening)|hola|querid[oa]|estimad[oa]|bonjour|salut|cher|"
+    r"chère)\b",
+    re.IGNORECASE,
+)
+_SIGN_OFF = re.compile(
+    r"\b(?:thanks|thank you|cheers|best|regards|sincerely|talk soon|gracias|saludos|un abrazo|merci|cordialement|"
+    r"bisous|à bientôt)\W+(?:(?-i:[A-ZÀ-Ý])[\w'’-]*\W*){0,2}$",
+    re.IGNORECASE,
+)
 _REPEAT = re.compile(r"(?<![\w'])(\w+)[ ,]+\1(?![\w'])", re.IGNORECASE)
 
 
@@ -89,6 +99,11 @@ def llm_reason(text: str, language: str = "en", *, short_max_words: int = 3) -> 
     n_words = len(t.split())
     if n_words <= short_max_words:
         return ""
+    # a message with a greeting or sign-off, or a long dictation, may need laying out in paragraphs
+    if n_words >= 12 and (_GREETING.search(t) or _SIGN_OFF.search(t)):
+        return "layout"
+    if n_words >= 60 and "\n" not in t:
+        return "layout"
     if found:
         return sorted(found)[0]
     if _REPEAT.search(t):

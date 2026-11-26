@@ -160,6 +160,7 @@ class FormatterConfig:
     collapse_repeats: bool = True
     final_period: bool = True
     spoken_identifiers: bool = True
+    layout: bool = True  # put a message's greeting and sign-off on their own lines
 
 
 @dataclass
@@ -168,17 +169,59 @@ class CommandsConfig:
     phrases: dict[str, dict[str, list[str]]] = field(default_factory=dict)
 
 
+# Spoken commands (see cleanup/commands.py for what each inserts and when a phrase is left as a word).
 DEFAULT_PHRASES = {
-    "en": {"new_line": ["new line"], "new_paragraph": ["new paragraph"], "scratch_that": ["scratch that"]},
+    "en": {
+        "new_line": ["new line", "next line", "line break"],
+        "new_paragraph": ["new paragraph", "next paragraph"],
+        "scratch_that": ["scratch that"],
+        "comma": ["comma"],
+        "period": ["period", "full stop"],
+        "question_mark": ["question mark"],
+        "exclamation_mark": ["exclamation mark", "exclamation point"],
+        "colon": ["colon"],
+        "semicolon": ["semicolon", "semi colon"],
+        "ellipsis": ["dot dot dot", "ellipsis"],
+        "open_quote": ["open quote", "open quotes", "begin quote"],
+        "close_quote": ["close quote", "close quotes", "end quote", "unquote"],
+        "open_paren": ["open paren", "open parenthesis", "open bracket"],
+        "close_paren": ["close paren", "close parenthesis", "close bracket"],
+    },
     "es": {
-        "new_line": ["nueva línea", "nueva linea"],
-        "new_paragraph": ["nuevo párrafo", "nuevo parrafo"],
+        "new_line": ["nueva línea", "nueva linea", "siguiente línea", "siguiente linea"],
+        "new_paragraph": ["nuevo párrafo", "nuevo parrafo", "siguiente párrafo", "siguiente parrafo"],
+        "period_new_paragraph": ["punto y aparte"],
         "scratch_that": ["borra eso"],
+        "comma": ["coma"],
+        "period": ["punto y seguido", "punto final", "punto"],
+        "semicolon": ["punto y coma"],
+        "colon": ["dos puntos"],
+        "question_mark": ["cierra interrogación", "cierra interrogacion", "signo de interrogación"],
+        "open_question": ["abre interrogación", "abre interrogacion"],
+        "exclamation_mark": ["cierra exclamación", "cierra exclamacion", "signo de exclamación"],
+        "open_exclamation": ["abre exclamación", "abre exclamacion"],
+        "ellipsis": ["puntos suspensivos"],
+        "open_quote": ["abre comillas"],
+        "close_quote": ["cierra comillas"],
+        "open_paren": ["abre paréntesis", "abre parentesis"],
+        "close_paren": ["cierra paréntesis", "cierra parentesis"],
     },
     "fr": {
-        "new_line": ["nouvelle ligne", "à la ligne"],
-        "new_paragraph": ["nouveau paragraphe"],
+        "new_line": ["nouvelle ligne", "à la ligne", "ligne suivante"],
+        "new_paragraph": ["nouveau paragraphe", "paragraphe suivant"],
+        "period_new_line": ["point à la ligne"],
         "scratch_that": ["efface ça", "efface ca"],
+        "comma": ["virgule"],
+        "period": ["point final", "point"],
+        "semicolon": ["point-virgule"],
+        "colon": ["deux-points"],
+        "question_mark": ["point d'interrogation"],
+        "exclamation_mark": ["point d'exclamation"],
+        "ellipsis": ["points de suspension"],
+        "open_quote": ["ouvrez les guillemets", "ouvrir les guillemets", "ouvrez guillemets"],
+        "close_quote": ["fermez les guillemets", "fermer les guillemets", "fermez guillemets"],
+        "open_paren": ["ouvrez la parenthèse", "ouvrir la parenthèse", "ouvrez parenthèse"],
+        "close_paren": ["fermez la parenthèse", "fermer la parenthèse", "fermez parenthèse"],
     },
 }
 
@@ -302,7 +345,10 @@ def parse_config(text: str, source_path: Path | None = None) -> Config:
     for name, cls in _SECTIONS.items():
         setattr(cfg, name, _build_section(cls, name, data.get(name, {})))
     cmd = dict(data.get("commands", {}))
-    phrases = {**DEFAULT_PHRASES, **cmd.pop("phrases", {})}
+    # merged per command, so customizing one phrase list doesn't drop the other defaults
+    phrases = {lang: dict(p) for lang, p in DEFAULT_PHRASES.items()}
+    for lang, custom in cmd.pop("phrases", {}).items():
+        phrases.setdefault(lang, {}).update(custom)
     cfg.commands = _build_section(CommandsConfig, "commands", cmd)
     cfg.commands.phrases = phrases
     if "models_dir" in data:

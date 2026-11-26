@@ -16,8 +16,9 @@ accept the invite, and keep it connected.
 
 1. Open the link you were given in **Safari** (iPhone) or **Chrome** (Android). Allow the microphone.
 2. Add it to your Home Screen: on iPhone, Share › **Add to Home Screen**; on Android, ⋮ › **Add to Home screen**.
-3. Open **Dictate**. Hold the button and speak (or tap to start and tap to stop). The text is copied:
-   paste it anywhere.
+3. Open **Dictate**. Hold the button and speak (or tap to start and tap to stop). Your words go in
+   wherever the cursor is in the text box, and you can edit it freely. Everything in the box is
+   copied after each dictation: paste it anywhere.
 
 ## 2b. Windows
 
@@ -48,7 +49,9 @@ accept the invite, and keep it connected.
 | Double-tap the hotkey … tap again | talk hands-free |
 | Esc | cancel |
 | Hold Shift while releasing | skip the AI cleanup once |
-| Say "new line" / "new paragraph" / "scratch that" | line breaks / delete the last sentence |
+| Say "new line" / "new paragraph" | line break / blank line |
+| Say "comma", "period", "question mark", "open quote" … "close quote" | that punctuation |
+| Say "scratch that" | delete the last sentence |
 
 The menu-bar or tray icon shows the status (white = ready, red = listening, grey = can't connect) and
 lets you switch between English, Spanish and French.
