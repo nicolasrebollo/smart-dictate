@@ -91,3 +91,70 @@ def test_hotkey_can_be_changed() -> None:
     hk._control("ptt", "alt_r")
     assert hk._handle("down", "ctrl_r", 0.0) == []
     assert [e.action for e in hk._handle("down", "alt_gr", 1.0)] == [Action.START]
+
+
+# -- one hotkey client per computer, separate start-at-login entries ------------------------------------
+def test_second_copy_cannot_take_a_held_lock() -> None:
+    from dictate import instance
+
+    first = instance.hold("test-lock-held")
+    assert first is not None
+    assert instance.hold("test-lock-held") is None
+    assert instance.hold("test-lock-other") is not None
+
+
+@pytest.fixture
+def fake_run_key(monkeypatch, tmp_path):
+    values: dict[str, str] = {}
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(autostart, "_win_get", values.get)
+    monkeypatch.setattr(autostart, "_win_set", values.__setitem__)
+    monkeypatch.setattr(autostart, "_win_delete", lambda name: values.pop(name, None))
+    monkeypatch.setattr(autostart, "_legacy_windows_script", lambda: tmp_path / "dictate.vbs")
+    return values
+
+
+def _as_app(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", r"C:\Users\x\AppData\Local\Programs\Dictate\Dictate.exe")
+
+
+def test_installed_app_moves_the_servers_autostart_aside_instead_of_replacing_it(monkeypatch, fake_run_key) -> None:
+    server = r'"C:\src\.venv\Scripts\pythonw.exe" -m dictate.cli pc'
+    fake_run_key["Dictate"] = server  # written by an older source checkout
+    _as_app(monkeypatch)
+    assert not autostart.is_enabled()
+    autostart.enable("client")
+    assert fake_run_key == {"Dictate (from source)": server, "Dictate": fake_run_key["Dictate"]}
+    assert "Dictate.exe" in fake_run_key["Dictate"] and autostart.is_enabled()
+    autostart.disable()
+    assert fake_run_key == {"Dictate (from source)": server}
+
+
+def test_source_autostart_leaves_the_installed_apps_alone(monkeypatch, fake_run_key) -> None:
+    app = r'"C:\Users\x\AppData\Local\Programs\Dictate\Dictate.exe"'
+    fake_run_key["Dictate"] = app
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    assert not autostart.is_enabled()
+    autostart.enable("pc")
+    assert fake_run_key["Dictate"] == app and "dictate.cli pc" in fake_run_key["Dictate (from source)"]
+    autostart.disable()
+    assert fake_run_key == {"Dictate": app}
+
+
+def test_mac_app_moves_an_old_source_launch_agent_aside(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(autostart.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(autostart.subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setattr(autostart.os, "getuid", lambda: 501, raising=False)
+    agents = tmp_path / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True)
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    old = autostart.mac_plist_text(["/src/.venv/bin/python", "-m", "dictate.cli", "client"], label=autostart.LABEL)
+    (agents / "com.dictate.app.plist").write_text(old, encoding="utf-8")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", "/Applications/Dictate.app/Contents/MacOS/Dictate")
+    autostart.enable("client")
+    moved = (agents / "com.dictate.source.plist").read_text(encoding="utf-8")
+    assert "<string>com.dictate.source</string>" in moved and "dictate.cli" in moved
+    assert "Dictate.app" in (agents / "com.dictate.app.plist").read_text(encoding="utf-8")

@@ -41,6 +41,11 @@ terminal, no models: the download is about 20 MB. [QUICKSTART.md](QUICKSTART.md)
 by step, including the one-time macOS security prompts. The same goes for a second Windows PC:
 run `Dictate-Windows-Setup.exe` and paste the link.
 
+Don't install the app on the PC that runs `dictate pc`: that already includes the hotkey client.
+Only one copy can use the hotkey per computer (two would type everything twice), so whichever starts
+second says so and stops. The app and a source checkout keep separate start-at-login entries, so
+installing or uninstalling the app never changes `dictate autostart`.
+
 The Mac hotkey is **Right Option**.
 
 <details><summary>From source instead (with a terminal)</summary>

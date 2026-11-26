@@ -33,10 +33,26 @@ def _load(args: argparse.Namespace):
         raise SystemExit(f"Config error: {e}") from e
 
 
+def _hold_hotkey():
+    """Stop here if another Dictate already uses the hotkey on this computer (it would type everything twice)."""
+    from dictate import instance
+
+    lock = instance.hold("hotkey")
+    if lock is None:
+        raise SystemExit(
+            "Dictate is already running on this computer (the installed app, or another `dictate pc` /\n"
+            "`dictate client`), and two copies would type everything twice. Quit it first: right-click its\n"
+            "tray icon (menu-bar icon on a Mac) > Quit Dictate. On the PC that runs the server, `dictate pc`\n"
+            "does everything the app does, so you can uninstall the app there."
+        )
+    return lock
+
+
 # -- client ---------------------------------------------------------------------------------------
 def cmd_client(args: argparse.Namespace) -> None:
     cfg = _load(args)
     setup_logging(args.debug or cfg.logging.debug)
+    lock = _hold_hotkey()  # noqa: F841 - held while the client runs
     host = urlsplit(cfg.client.server).hostname or ""
     local = host in ("127.0.0.1", "localhost", "::1")
     token = cfg.client.token or (cfg.server.token if local else "")
@@ -122,6 +138,7 @@ def _print_connection_info(cfg, token: str) -> None:
 def cmd_pc(args: argparse.Namespace) -> None:
     cfg = _load(args)
     setup_logging(args.debug or cfg.logging.debug)
+    lock = _hold_hotkey()  # noqa: F841 - checked before the models load; held while the client runs
     token = _start_server(cfg)
     from dictate.client import Client
 

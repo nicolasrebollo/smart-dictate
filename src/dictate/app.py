@@ -14,7 +14,7 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit
 
-from dictate import __version__, dialogs, paths
+from dictate import __version__, dialogs, instance, paths
 from dictate.invite import check_server, parse_invite
 
 log = logging.getLogger("dictate")
@@ -72,30 +72,6 @@ def configured(cfg: Any) -> bool:
     return bool(cfg.client.token) and host not in ("127.0.0.1", "localhost", "::1", "")
 
 
-def _single_instance() -> Any:
-    """A handle that stays held while this copy runs, or None if another copy already runs."""
-    if sys.platform == "win32":
-        import ctypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.CreateMutexW.restype = ctypes.c_void_p
-        handle = kernel32.CreateMutexW(None, False, "Local\\DictateDesktopApp")
-        if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
-            return None
-        return handle
-    import fcntl
-
-    path = paths.data_dir() / "app.lock"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    f = open(path, "w")  # noqa: SIM115 - held open for the life of the app
-    try:
-        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        f.close()
-        return None
-    return f
-
-
 def _mac_not_in_applications() -> bool:
     """Run straight from the download (the disk image, or a quarantined copy macOS moved aside)."""
     exe = sys.executable
@@ -133,9 +109,19 @@ def main() -> None:
             "then open Dictate from Applications (or Launchpad).",
         )
         return
-    lock = _single_instance()
+    lock = instance.hold("app")
     if lock is None:
         dialogs.message("Dictate is already running", f"Look for {ICON_WHERE} for the menu.")
+        return
+    hotkey_lock = instance.hold("hotkey")
+    if hotkey_lock is None:  # `dictate pc` / `dictate client` from a terminal: both would type everything twice
+        dialogs.message(
+            "Dictate is already running on this computer",
+            "Another copy of Dictate (started from a terminal, e.g. the PC that runs the server) already "
+            "uses the hotkey here, so this one would type everything twice.\n\n"
+            "On the PC that runs the server you don't need the app: `dictate pc` already does the same. "
+            "To use the app instead, quit the other copy first (Quit Dictate in its menu).",
+        )
         return
 
     from dictate import autostart, offline
