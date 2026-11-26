@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Dictate</title>
+<meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Dictate">
@@ -69,7 +70,8 @@
 
   <div class="setup" id="setup" hidden>
     <strong>One-time setup.</strong> Open the link that <code>dictate server</code> prints on your PC
-    (it ends with <code>#t=…</code>). Then use Share → <em>Add to Home Screen</em>.
+    (it ends with <code>?t=…</code>). Then use Share → <em>Add to Home Screen</em>.
+    If this is a Home Screen app saved earlier, delete it and add it again from that link.
   </div>
 
   <div class="result empty" id="result">Your text appears here and is copied automatically.</div>
@@ -95,18 +97,16 @@ const $ = (id) => document.getElementById(id);
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
                 set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 
-// Token: arrives once in the URL (#t=...), then lives in this browser only.
-// The URL keeps it (the #fragment is never sent over the network) so "Add to Home Screen" carries it:
-// a Home Screen app has its own storage, separate from Safari's.
-const hashToken = new URLSearchParams(location.hash.slice(1)).get("t");
-if (hashToken) store.set("dictate-token", hashToken);
-const token = hashToken || store.get("dictate-token") || "";
-if (token) {
-  if (!hashToken) history.replaceState(null, "", "/#t=" + encodeURIComponent(token));
-  document.querySelector('link[rel="manifest"]').href = "/manifest.webmanifest?t=" + encodeURIComponent(token);
-} else {
-  $("setup").hidden = false;
-}
+// Token: arrives in the URL (?t=..., or #t=... from older links) and is remembered in this browser.
+// A Home Screen app has its own storage, separate from Safari's, so it gets the token from the
+// manifest's start_url. iOS only reads the manifest the server put in the HTML, and the server
+// only puts the token-carrying one there when the page was loaded as /?t=<token>. So always load
+// the page that way.
+const urlToken = new URLSearchParams(location.search).get("t");
+const token = urlToken || new URLSearchParams(location.hash.slice(1)).get("t") || store.get("dictate-token") || "";
+if (token) store.set("dictate-token", token);
+if (token && urlToken !== token) location.replace("/?t=" + encodeURIComponent(token));
+if (!token) $("setup").hidden = false;
 
 const lang = $("lang");
 lang.value = store.get("dictate-lang") || "en";
@@ -192,7 +192,11 @@ async function start() {
   try { await openMic(); } catch (e) { hint.textContent = "Microphone blocked: allow it in Settings › Safari"; return; }
   recording = true; outbuf = preroll.splice(0); talk.className = "rec";
   $("cancel").classList.add("show"); setStatus("Listening", "rec"); hint.textContent = "Listening…";
-  try { await connect(); } catch { stopUi(); hint.textContent = "Can't reach your PC"; recording = false; return; }
+  try { await connect(); } catch {
+    stopUi(); recording = false;
+    hint.textContent = token ? "Can't reach your PC" : "Not set up: open the link your PC printed";
+    return;
+  }
   ws.send(JSON.stringify({ type: "start", language: lang.value }));
   flush(false);
   // Released before the mic was ready (e.g. during the permission prompt): switch to tap-to-stop.

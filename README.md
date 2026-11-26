@@ -50,7 +50,8 @@ The Mac hotkey is **Right Option**.
 ## 4. The iPhone
 
 1. Make sure Tailscale is on.
-2. Open the link the PC printed (`https://your-pc…ts.net/#t=…`) in **Safari**.
+2. Open the link the PC printed (`https://your-pc…ts.net/?t=…`) in **Safari**. If you added Dictate to
+   your Home Screen before, delete that icon first: it can't pick up a new link.
 3. Tap Share › **Add to Home Screen**.
 
 Open **Dictate** from your home screen. Hold the button, speak and let go, or tap to start and tap to

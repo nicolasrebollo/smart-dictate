@@ -84,11 +84,17 @@ def test_serves_phone_app_and_icons(server) -> None:
     base = url.replace("ws://", "http://")
     html = urllib.request.urlopen(base + "/", timeout=3).read().decode()
     assert "<title>Dictate</title>" in html and TOKEN not in html
+    assert '<link rel="manifest" href="/manifest.webmanifest">' in html
+    # iOS reads the manifest named in the HTML itself, so with the right token it must be baked in there
+    html = urllib.request.urlopen(base + f"/?t={TOKEN}", timeout=3).read().decode()
+    assert f'<link rel="manifest" href="/manifest.webmanifest?t={TOKEN}">' in html
+    html = urllib.request.urlopen(base + "/?t=guess", timeout=3).read().decode()
+    assert "guess" not in html and '<link rel="manifest" href="/manifest.webmanifest">' in html
     manifest = json.loads(urllib.request.urlopen(base + "/manifest.webmanifest", timeout=3).read())
     assert manifest["display"] == "standalone" and manifest["start_url"] == "/"
     # the Home Screen app must start with the token, but only the right one is echoed back
     good = json.loads(urllib.request.urlopen(base + f"/manifest.webmanifest?t={TOKEN}", timeout=3).read())
-    assert good["start_url"] == f"/#t={TOKEN}"
+    assert good["start_url"] == f"/?t={TOKEN}"
     bad = json.loads(urllib.request.urlopen(base + "/manifest.webmanifest?t=guess", timeout=3).read())
     assert bad["start_url"] == "/"
     png = urllib.request.urlopen(base + "/apple-touch-icon.png", timeout=3).read()

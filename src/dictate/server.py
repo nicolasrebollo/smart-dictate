@@ -8,8 +8,9 @@ Protocol (WebSocket at /ws?token=...):
   server -> {"type": "result", "text": "...", "heard": "...", "mode": "cleaned", "ms": 182}
   server -> {"type": "error", "message": "..."}
 
-HTTP GET / serves the phone web app (no secrets in it; the token comes from the URL you open
-once). The server binds to 127.0.0.1 by default: Tailscale (`tailscale serve`) forwards your own
+HTTP GET / serves the phone web app. The token comes from the URL you open once (/?t=...); only
+when it's the right one does the page name a manifest whose start_url carries it, so that
+"Add to Home Screen" keeps it. The server binds to 127.0.0.1 by default: Tailscale (`tailscale serve`) forwards your own
 devices to it over HTTPS, and nothing on your Wi-Fi can reach it.
 """
 
@@ -25,7 +26,7 @@ from functools import cache
 from http import HTTPStatus
 from importlib import resources
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.datastructures import Headers
@@ -65,11 +66,17 @@ MANIFEST = {
 }
 
 
-def _static(path: str, start_url: str = "/") -> tuple[bytes, str] | None:
+def _static(path: str, token: str = "") -> tuple[bytes, str] | None:
+    """`token` is set only when the request carried the right one (?t=...)."""
+    t = quote(token, safe="")
     if path in ("/", "/index.html"):
-        return resources.files("dictate.web").joinpath("index.html").read_bytes(), "text/html; charset=utf-8"
+        html = resources.files("dictate.web").joinpath("index.html").read_bytes()
+        if t:  # iOS reads the manifest named in the HTML; a link swapped in later by script is ignored
+            html = html.replace(b'href="/manifest.webmanifest"', f'href="/manifest.webmanifest?t={t}"'.encode(), 1)
+        return html, "text/html; charset=utf-8"
     if path == "/manifest.webmanifest":
-        return json.dumps({**MANIFEST, "start_url": start_url}).encode(), "application/manifest+json"
+        # Add to Home Screen saves start_url, and a Home Screen app has its own storage: it must carry the token.
+        return json.dumps({**MANIFEST, "start_url": f"/?t={t}" if t else "/"}).encode(), "application/manifest+json"
     sizes = {"/icon-192.png": 192, "/icon-512.png": 512, "/apple-touch-icon.png": 180}
     if path in sizes:
         return _icon_png(sizes[path]), "image/png"
@@ -106,11 +113,10 @@ class DictateServer:
             return None  # proceed with the WebSocket handshake
         if request.headers.get("Upgrade", "").lower() == "websocket":
             return _response(HTTPStatus.NOT_FOUND, b"not found\n", "text/plain")
-        # A Home Screen web app starts at the manifest's start_url, with storage separate from Safari's,
-        # so it must carry the token. Only echo it back when it's the right one.
+        # Only echo the token back (into the manifest link and start_url) when it's the right one.
         given = parse_qs(urlsplit(request.path).query).get("t", [""])[0]
-        start_url = f"/#t={given}" if given and hmac.compare_digest(given.encode(), self.token.encode()) else "/"
-        static = _static(path, start_url)
+        ok = bool(given) and bool(self.token) and hmac.compare_digest(given.encode(), self.token.encode())
+        static = _static(path, self.token if ok else "")
         if static is None:
             return _response(HTTPStatus.NOT_FOUND, b"not found\n", "text/plain")
         return _response(HTTPStatus.OK, *static)

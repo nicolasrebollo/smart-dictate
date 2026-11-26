@@ -104,7 +104,7 @@ def _print_connection_info(cfg, token: str) -> None:
         print(f'      server = "wss://{name}"')
         print(f'      token = "{token}"')
         print("  iPhone: open this once in Safari, then Share > Add to Home Screen:")
-        print(f"      https://{name}/#t={token}")
+        print(f"      https://{name}/?t={token}")
     else:
         print("  To use it from your Mac and iPhone: install Tailscale on all three devices")
         print("  (https://tailscale.com), sign in with the same account, then restart `dictate pc`.")
