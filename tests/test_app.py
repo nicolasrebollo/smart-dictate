@@ -228,3 +228,20 @@ def test_logs_never_contain_tokens_or_api_keys() -> None:
         "x", logging.INFO, "f", 1, "connected to %s", ("wss://pc/ws?token=AbCdEfGhIjKlMn",), None
     )
     assert "AbCdEfGhIjKlMn" not in RedactingFormatter("%(message)s").format(record)  # arguments too
+
+
+def test_local_mode_finds_the_downloaded_python_not_uvs_shortcut(monkeypatch, tmp_path) -> None:
+    """When Windows refuses uv's shortcut folder (os error 448), setup uses the real download instead."""
+    from dictate import local_gpu
+
+    monkeypatch.setattr(local_gpu, "runtime_dir", lambda: tmp_path)
+    base = tmp_path / "python"
+    assert local_gpu._downloaded_python() is None
+    for name in ("cpython-3.12.9-windows-x86_64-none", "cpython-3.12.16-windows-x86_64-none"):
+        (base / name).mkdir(parents=True)
+        (base / name / "python.exe").write_bytes(b"")
+    (base / "cpython-3.12-windows-x86_64-none").mkdir()  # where uv's shortcut goes: never used
+    (base / "cpython-3.12-windows-x86_64-none" / "python.exe").write_bytes(b"")
+    (base / "cpython-3.13.1-windows-x86_64-none").mkdir()  # another minor version: not ours
+    (base / "cpython-3.13.1-windows-x86_64-none" / "python.exe").write_bytes(b"")
+    assert local_gpu._downloaded_python() == base / "cpython-3.12.16-windows-x86_64-none" / "python.exe"

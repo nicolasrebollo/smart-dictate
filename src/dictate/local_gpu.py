@@ -15,6 +15,7 @@ it can never outlive the app, and connects to it on 127.0.0.1. Uninstalling the 
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -136,6 +137,40 @@ def _run(args: list[str], log_file, report: Report, what: str, start: float, end
     report(what, end)
 
 
+def _downloaded_python() -> Path | None:
+    """python.exe of the CPython 3.12 that uv downloaded into the runtime: the real folder
+    (cpython-3.12.16-windows-…), not uv's shortcut to it (cpython-3.12-windows-…)."""
+    found = []
+    for d in (runtime_dir() / "python").glob(f"cpython-{PYTHON}.*-windows-*"):
+        if d.is_dir() and not d.is_junction() and not d.is_symlink() and (d / "python.exe").is_file():
+            patch = d.name.split("-")[1].split(".")[-1]
+            found.append((int(patch) if patch.isdigit() else 0, d / "python.exe"))
+    return max(found)[1] if found else None
+
+
+def _make_venv(uv: str, log_file, report: Report) -> None:
+    """The runtime's Python environment. Normally uv makes it in one go. On some PCs Windows refuses the
+    shortcut (a junction) uv makes next to the Python it downloads ("untrusted mount point", os error 448,
+    e.g. with folder redirection or strict security policies). The download itself is complete by then, so
+    fall back to Python's own venv module, which needs no shortcut."""
+    venv = runtime_dir() / "venv"
+    what = "Getting Python…"
+    try:
+        _run([uv, "venv", "--python", PYTHON, str(venv)], log_file, report, what, 0.02, 0.06)
+        return
+    except RuntimeError as e:
+        first = e
+    log_file.write("\nuv couldn't set up the environment; using Python's own venv module instead\n")
+    if _downloaded_python() is None:
+        with contextlib.suppress(RuntimeError):  # the same shortcut can fail here too, after the files are in place
+            _run([uv, "python", "install", PYTHON], log_file, report, what, 0.02, 0.05)
+    python = _downloaded_python()
+    if python is None:
+        raise first
+    shutil.rmtree(venv, ignore_errors=True)  # whatever uv left half-made
+    _run([str(python), "-m", "venv", str(venv)], log_file, report, what, 0.02, 0.06)
+
+
 def install(report: Report) -> None:
     """Download and set up everything (or update it after the app was updated). Blocks for a while."""
     bundle = bundle_dir()
@@ -151,7 +186,7 @@ def install(report: Report) -> None:
     with (log_dir / "local-setup.log").open("a", encoding="utf-8") as f:
         report("Getting Python…", 0.02)
         if not _python().is_file():
-            _run([uv, "venv", "--python", PYTHON, str(rt / "venv")], f, report, "Getting Python…", 0.02, 0.06)
+            _make_venv(uv, f, report)
         _run(
             [uv, "pip", "install", "--python", str(_python()), "--require-hashes",
              "-r", str(bundle / "requirements.txt")],

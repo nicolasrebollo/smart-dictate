@@ -1,6 +1,6 @@
 [project]
 name = "dictate"
-version = "0.2.1"
+version = "0.2.2"
 description = "Push-to-talk dictation with AI cleanup, on your own GPU, a PC that shares one, or an online AI service."
 license = "MIT"
 requires-python = ">=3.12"
