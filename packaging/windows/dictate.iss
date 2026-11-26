@@ -36,6 +36,10 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 ; files from an older version don't linger
 Type: filesandordirs; Name: "{app}\_internal"
 
+[UninstallDelete]
+; local mode's engine and models (several GB), downloaded by the app into its own folder
+Type: filesandordirs; Name: "{localappdata}\dictate\app-runtime"
+
 [Icons]
 Name: "{userprograms}\Dictate"; Filename: "{app}\Dictate.exe"
 

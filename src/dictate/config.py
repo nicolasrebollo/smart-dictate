@@ -1,7 +1,8 @@
 """Configuration: one small TOML file.
 
-[client] is used on every device (Mac, PC): where the server is, the hotkey, the language.
+[client] is used on every device (Mac, PC): where the speech recognition runs, the hotkey, the language.
 [server] is only used on the PC that runs the models.
+[online] is only used in online mode: which online service does what (API keys are in the system keychain).
 
 Everything else (speech detection, guardrails, model internals) has sensible defaults and isn't
 in the file. Power users can still add those sections ([asr], [vad], [cleanup], [guardrails],
@@ -25,6 +26,8 @@ from dictate import paths
 log = logging.getLogger(__name__)
 
 LANGUAGES = ("en", "es", "fr")
+SPEECH_PROVIDERS = ("openai", "google", "xai")  # online services that turn speech into text
+CLEANUP_PROVIDERS = ("openai", "anthropic", "google", "xai")  # online services for the AI cleanup
 # macOS shows an orange "microphone in use" indicator while the mic is open, so there the mic is only
 # opened while you hold the key. Elsewhere it stays open so the first syllable is never clipped.
 _KEEP_MIC_OPEN = sys.platform != "darwin"
@@ -62,8 +65,12 @@ def default_config_text() -> str:
 
 
 # -- user-facing sections ----------------------------------------------------------------------------
+MODES = ("remote", "online", "local")  # a PC's link | an online AI service | this computer's own GPU
+
+
 @dataclass
 class ClientConfig:
+    mode: str = "remote"
     server: str = "ws://127.0.0.1:8765"
     token: str = ""
     hotkey: str = "ctrl_r"
@@ -81,6 +88,15 @@ class ClientConfig:
     double_tap_window_ms: int = 400
     restore_clipboard: bool = True
     restore_delay_ms: int = 400
+
+
+@dataclass
+class OnlineConfig:
+    speech: str = ""  # who turns speech into text: openai | google | xai
+    cleanup: str = ""  # who cleans the text up: openai | anthropic | google | xai ("" = rules only)
+    speech_model: str = ""  # "" = the best one the service offers (checked when you set it up)
+    cleanup_model: str = ""
+    timeout_ms: int = 10000  # an online cleanup slower than this falls back to the rule-based formatting
 
 
 @dataclass
@@ -241,6 +257,7 @@ class LoggingConfig:
 class Config:
     client: ClientConfig = field(default_factory=ClientConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
+    online: OnlineConfig = field(default_factory=OnlineConfig)
     asr: AsrConfig = field(default_factory=AsrConfig)
     vad: VadConfig = field(default_factory=VadConfig)
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
@@ -262,6 +279,7 @@ class ConfigError(ValueError):
 _SECTIONS: dict[str, type] = {
     "client": ClientConfig,
     "server": ServerConfig,
+    "online": OnlineConfig,
     "asr": AsrConfig,
     "vad": VadConfig,
     "cleanup": CleanupConfig,
@@ -310,6 +328,13 @@ def _build_section(cls: type, section: str, raw: dict[str, Any]) -> Any:
 
 def _validate(cfg: Config) -> None:
     c, s = cfg.client, cfg.server
+    if c.mode not in MODES:
+        raise ConfigError(f"[client] mode must be one of {', '.join(MODES)}, got {c.mode!r}")
+    o = cfg.online
+    if o.speech not in ("", *SPEECH_PROVIDERS):
+        raise ConfigError(f"[online] speech must be one of {', '.join(SPEECH_PROVIDERS)}, got {o.speech!r}")
+    if o.cleanup not in ("", *CLEANUP_PROVIDERS):
+        raise ConfigError(f"[online] cleanup must be one of {', '.join(CLEANUP_PROVIDERS)}, got {o.cleanup!r}")
     if c.language not in LANGUAGES:
         raise ConfigError(f"[client] language must be one of {', '.join(LANGUAGES)}, got {c.language!r}")
     if not re.match(r"^wss?://", c.server):
@@ -324,8 +349,8 @@ def _validate(cfg: Config) -> None:
         raise ConfigError(f"[asr] device must be 'cuda' or 'cpu', got {cfg.asr.device!r}")
     if cfg.asr.quantization not in ("", "int8"):
         raise ConfigError(f"[asr] quantization must be '' or 'int8', got {cfg.asr.quantization!r}")
-    if cfg.cleanup.backend not in ("llama-server", "ollama"):
-        raise ConfigError("[cleanup] backend must be 'llama-server' or 'ollama'")
+    if cfg.cleanup.backend not in ("llama-server", "ollama", "cloud"):
+        raise ConfigError("[cleanup] backend must be 'llama-server', 'ollama' or 'cloud'")
     if cfg.cleanup.math_style not in ("unicode", "ascii"):
         raise ConfigError("[cleanup] math_style must be 'unicode' or 'ascii'")
     if cfg.llm.speculative not in ("ngram", "none"):

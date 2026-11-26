@@ -3,8 +3,8 @@
   Windows -> Dictate-Windows-Setup.exe   (an installer: no admin rights needed)
   macOS   -> Dictate-Mac.dmg             (drag Dictate into Applications)
 
-    uv sync --group build
-    uv run python packaging/build.py [--out PATH]
+    uv sync --no-dev --group build --extra cloud
+    uv run --no-sync python packaging/build.py [--out PATH]
 
 A Mac build has to be made on a Mac. The GitHub workflow (.github/workflows/build-apps.yml) builds
 all of them in the cloud, so you don't need a Mac yourself.
@@ -45,6 +45,50 @@ def make_icons() -> Path:
     img.save(out / "dictate.png")
     img.save(out / "dictate.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
     img.save(out / "dictate.icns")
+    return out
+
+
+def silero() -> Path:
+    """The speech detector online mode runs on this computer (2 MB, MIT), hash-checked."""
+    sys.path.insert(0, str(ROOT / "src"))
+    import hashlib
+
+    from dictate.models import SILERO_SHA256, SILERO_URL
+
+    dest = BUILD / "silero" / "silero_vad.onnx"
+    if not (dest.is_file() and hashlib.sha256(dest.read_bytes()).hexdigest() == SILERO_SHA256):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        from dictate.models import _download
+
+        _download(SILERO_URL, dest)
+        if hashlib.sha256(dest.read_bytes()).hexdigest() != SILERO_SHA256:
+            dest.unlink()
+            raise SystemExit("Silero VAD download doesn't match its checksum")
+    return dest
+
+
+def _uv() -> str:
+    found = os.environ.get("UV") or shutil.which("uv")
+    if not found:
+        raise SystemExit("uv not found (needed to bundle local mode): install it, or set UV to its path")
+    return found
+
+
+def local_mode_bundle() -> Path:
+    """What the Windows app needs to set up local mode by itself (see src/dictate/local_gpu.py): uv, this
+    version of Dictate as a wheel, and the server's requirements pinned (with hashes) from uv.lock."""
+    uv = _uv()
+    out = BUILD / "runtime"
+    shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True)
+    shutil.copy2(uv, out / "uv.exe")
+    subprocess.run([uv, "build", "--wheel", "--out-dir", str(out)], check=True, cwd=ROOT)
+    (out / ".gitignore").unlink(missing_ok=True)  # uv build leaves one in its output folder
+    subprocess.run(
+        [uv, "export", "--frozen", "--extra", "server", "--no-dev", "--no-emit-project", "--format",
+         "requirements-txt", "--output-file", str(out / "requirements.txt")],
+        check=True, cwd=ROOT,
+    )  # fmt: skip
     return out
 
 
@@ -109,6 +153,9 @@ def main() -> None:
     out = args.out.resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     make_icons()
+    silero()
+    if not MAC:
+        local_mode_bundle()
     app = pyinstaller()
     result = mac_dmg(app, out) if MAC else windows_installer(app, out)
     print(f"\nBuilt {result}")

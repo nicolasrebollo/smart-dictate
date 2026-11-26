@@ -103,8 +103,9 @@ class ASRWorker:
         self._q.put(_Job(priority, next(self._seq), fn, fut))
         return fut
 
-    def transcribe(self, audio: FloatArray) -> str:
-        return self.asr.transcribe(audio).text
+    def transcribe(self, audio: FloatArray, **kwargs: object) -> str:
+        """`kwargs` (language, vocabulary) go to backends that take them (the online ones)."""
+        return self.asr.transcribe(audio, **kwargs).text  # type: ignore[call-arg]
 
     def _run(self) -> None:
         while True:
@@ -133,10 +134,16 @@ class StreamingSession:
     """Fed (in order) with 512-sample float32 blocks and their VAD probabilities."""
 
     def __init__(
-        self, worker: ASRWorker, cfg: StreamConfig, *, on_commit: Callable[[int, str], None] | None = None
+        self,
+        worker: ASRWorker,
+        cfg: StreamConfig,
+        *,
+        on_commit: Callable[[int, str], None] | None = None,
+        asr_kwargs: dict | None = None,
     ) -> None:
         self.worker = worker
         self.cfg = cfg
+        self.asr_kwargs = asr_kwargs or {}
         self.on_commit = on_commit
         self.segmenter = Segmenter(
             threshold=cfg.threshold, pause_ms=cfg.pause_ms, min_segment_s=cfg.min_segment_s,
@@ -171,7 +178,7 @@ class StreamingSession:
         c = self.cfg
         t = trim(audio, probs, threshold=c.threshold, pad_ms=c.pad_ms, max_pause_ms=c.max_pause_ms,
                  min_speech_ms=c.min_speech_ms)  # fmt: skip
-        return "" if t is None else self.worker.transcribe(t.audio)
+        return "" if t is None else self.worker.transcribe(t.audio, **self.asr_kwargs)
 
     def _commit_until(self, cut: int) -> None:
         index = len(self._futures)

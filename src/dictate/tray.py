@@ -63,6 +63,8 @@ class Controls(Protocol):
     hotkey: str
     sounds_on: bool
     can_change_server: bool
+    can_reconfigure: bool
+    label: str
 
     def set_language(self, code: str) -> None: ...
     def set_enabled(self, on: bool) -> None: ...
@@ -74,6 +76,7 @@ class Controls(Protocol):
     def autostart_on(self) -> bool: ...
     def set_autostart(self, on: bool) -> None: ...
     def change_server(self) -> None: ...
+    def reconfigure(self) -> None: ...
     def open_settings(self) -> None: ...
     def stop(self) -> None: ...
 
@@ -129,6 +132,7 @@ class Tray:
         )  # fmt: skip
         items = [
             Item(lambda _i: self._status, None, enabled=False),
+            *([Item(f"Using: {controls.label}", None, enabled=False)] if controls.label else []),
             Item(lambda _i: "Turn off Dictate" if controls.enabled else "Turn on Dictate",
                  later(lambda: controls.set_enabled(not controls.enabled))),
             Menu.SEPARATOR,
@@ -140,7 +144,9 @@ class Tray:
             autostart,
             Menu.SEPARATOR,
         ]  # fmt: skip
-        if controls.can_change_server:
+        if controls.can_reconfigure:
+            items.append(Item("Change how Dictate works…", later(controls.reconfigure)))
+        elif controls.can_change_server:
             items.append(Item("Connect to a different PC…", later(controls.change_server)))
         items += [
             Item("Advanced settings…", later(controls.open_settings)),
@@ -182,6 +188,10 @@ class Tray:
     def _quit(self) -> None:
         self._c.stop()
         self.icon.stop()
+
+    def quit(self) -> None:
+        """Safe to call from any thread."""
+        self._call(self._quit)
 
     def run(self, on_ready: Callable[[], None] | None = None) -> None:
         """Blocks; must be called on the main thread (required on macOS)."""

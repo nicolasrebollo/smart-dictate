@@ -46,6 +46,7 @@ class Engine:
         missing = models.missing_models(cfg)
         if missing:
             raise SystemExit(f"Missing models: {', '.join(missing)}. Run `dictate setup` first.")
+        online = cfg.cleanup.backend == "cloud"
         self.cfg = cfg
         t0 = time.perf_counter()
         self._vads: queue.Queue[SileroVAD] = queue.Queue()
@@ -61,8 +62,9 @@ class Engine:
             log.info("starting AI cleanup model (%s)...", cfg.cleanup.model)
             try:
                 self.llm = create_llm(cfg)
-                Cleaner(self.llm, cfg).warm()
-            except LLMError as e:  # fail soft: rule-based formatting still works
+                if not online:  # warming fills a local model's cache; online it would only cost money
+                    Cleaner(self.llm, cfg).warm()
+            except (LLMError, RuntimeError) as e:  # fail soft: rule-based formatting still works
                 log.error("AI cleanup unavailable, using rule-based formatting only: %s", e)
                 self.llm = None
         self.lock = threading.Lock()
@@ -111,6 +113,10 @@ class EngineSession:
                 pad_ms=cfg.vad.pad_ms, max_pause_ms=cfg.vad.max_pause_ms, min_speech_ms=cfg.vad.min_speech_ms,
             ),
             on_commit=(lambda _i, text: inc.commit(text)) if inc is not None else None,
+            asr_kwargs=(
+                {"language": language, "vocabulary": tuple(cfg.vocabulary.words)}
+                if getattr(engine.asr, "wants_language", False) else None
+            ),
         )  # fmt: skip
         self.vad = engine._vad()
         self.vad.reset()

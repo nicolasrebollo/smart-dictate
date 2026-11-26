@@ -17,7 +17,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from dictate import offline, paths
 from dictate.config import ConfigError, ensure_config_file, ensure_server_token, load_config
@@ -53,15 +52,19 @@ def cmd_client(args: argparse.Namespace) -> None:
     cfg = _load(args)
     setup_logging(args.debug or cfg.logging.debug)
     lock = _hold_hotkey()  # noqa: F841 - held while the client runs
-    host = urlsplit(cfg.client.server).hostname or ""
-    local = host in ("127.0.0.1", "localhost", "::1")
-    token = cfg.client.token or (cfg.server.token if local else "")
-    if not token:
+    from dictate import modes
+
+    session = modes.start(cfg)  # remote: your PC's link; online: the engine runs here; local: the app's GPU engine
+    if not session.token:
         log.warning("no [client] token set: copy it from the `dictate pc` output on your PC")
-    offline.install_network_guard(allow_hosts=[host])  # the client only ever talks to your server
+    offline.install_network_guard(allow_hosts=session.allow_hosts)  # only your server / your online services
     from dictate.client import Client
 
-    Client(cfg, token=token, mode="client").run(tray=not args.no_tray)
+    try:
+        client = Client(cfg, token=session.token, server=session.server, mode="client", label=session.label)
+        client.run(tray=not args.no_tray)
+    finally:
+        session.close()
 
 
 def cmd_app(args: argparse.Namespace) -> None:
@@ -73,43 +76,20 @@ def cmd_app(args: argparse.Namespace) -> None:
 # -- server ---------------------------------------------------------------------------------------
 def _start_server(cfg) -> str:
     """Load models and start the WebSocket server in a background thread. Returns the token."""
-    import asyncio
-    import threading
-
     from dictate.engine import Engine
-    from dictate.server import DictateServer
+    from dictate.server import DictateServer, start_in_thread
 
     offline.enforce_offline_env()
     offline.install_network_guard()  # the server only ever talks to localhost
     token = ensure_server_token(cfg)
     engine = Engine(cfg)
-    srv = DictateServer(engine, token)
-    started = threading.Event()
-    failure: list[BaseException] = []
-
-    def run() -> None:
-        async def main() -> None:
-            ready = asyncio.Event()
-            task = asyncio.create_task(srv.serve_forever(cfg.server.host, cfg.server.port, ready))
-            waiter = asyncio.create_task(ready.wait())
-            await asyncio.wait([task, waiter], return_when=asyncio.FIRST_COMPLETED)
-            started.set()
-            await task
-
-        try:
-            asyncio.run(main())
-        except BaseException as e:
-            failure.append(e)
-            started.set()
-
-    threading.Thread(target=run, name="server", daemon=True).start()
-    started.wait(30)
-    if failure:
+    try:
+        start_in_thread(DictateServer(engine, token), cfg.server.host, cfg.server.port)
+    except BaseException as err:
         engine.close()
-        err = failure[0]
         if isinstance(err, OSError):
-            raise SystemExit(f"Can't listen on port {cfg.server.port} ({err}). Is dictate already running?")
-        raise SystemExit(f"Server failed to start: {err}")
+            raise SystemExit(f"Can't listen on port {cfg.server.port} ({err}). Is dictate already running?") from None
+        raise SystemExit(f"Server failed to start: {err}") from None
     _print_connection_info(cfg, token)
     return token
 
@@ -235,7 +215,9 @@ def main(argv: list[str] | None = None) -> None:
     for name, help_ in (("client", "hotkey client (default)"), ("pc", "server + client on the PC with the GPU")):
         sp = sub.add_parser(name, help=help_)
         sp.add_argument("--no-tray", action="store_true", help="no tray / menu-bar icon")
-    sub.add_parser("app", help="the client with setup and messages in windows (what the installed app runs)")
+    ap = sub.add_parser("app", help="the client with setup and messages in windows (what the installed app runs)")
+    ap.add_argument("--restarted", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--self-test", nargs="?", const="-", metavar="REPORT", help="check the app's pieces and exit")
     sub.add_parser("server", help="server only (speech recognition + AI cleanup)")
     sub.add_parser("setup", help="download the models (PC only; the only command that uses the internet)")
     a = sub.add_parser("autostart", help="start dictate when you log in")

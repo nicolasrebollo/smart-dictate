@@ -27,6 +27,8 @@ def data_dir() -> Path:
 
 
 def default_models_dir() -> Path:
+    if override := os.environ.get("DICTATE_MODELS_DIR"):  # the app's own GPU runtime keeps its models apart
+        return Path(override)
     return data_dir() / "models"
 
 

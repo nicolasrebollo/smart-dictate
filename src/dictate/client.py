@@ -192,18 +192,32 @@ def mac_permissions_ok() -> bool:
 class Client:
     """The hotkey client. It also implements tray.Controls: everything the menu can change."""
 
-    def __init__(self, cfg: Config, *, token: str | None = None, mode: str = "client", app: bool = False) -> None:
+    def __init__(
+        self,
+        cfg: Config,
+        *,
+        token: str | None = None,
+        server: str | None = None,
+        mode: str = "client",
+        app: bool = False,
+        label: str = "",
+        reconfigure: Callable[[], None] | None = None,
+    ) -> None:
         c = cfg.client
         self.cfg = cfg
         self.mode = mode  # "client", or "pc" when this computer also runs the server
         self.app = app  # the installed app: there's no terminal, so problems are shown in dialogs
+        self.label = label  # where the speech recognition runs, e.g. "Online: OpenAI + Claude"
         self.language = c.language
         self.hotkey = c.hotkey
         self.enabled = True
-        self.can_change_server = mode == "client"
+        self._reconfigure = reconfigure
+        self.can_reconfigure = reconfigure is not None  # the app: "Change how Dictate works…"
+        self.can_change_server = mode == "client" and reconfigure is None and c.mode == "remote"
         self.inserter = make_inserter(cfg)
         self.sounds = Sounds(paths.data_dir() / "sounds", enabled=c.sounds, volume=c.volume)
-        self.conn = Connection(c.server, token if token is not None else c.token, self._connection_changed)
+        self.server = server or c.server
+        self.conn = Connection(self.server, token if token is not None else c.token, self._connection_changed)
         self.mic = Mic(c.input_device, c.preroll_ms, keep_open=c.keep_mic_open)
         self.recognizer = GestureRecognizer(
             tap_max_s=c.tap_max_ms / 1000, double_tap_window_s=c.double_tap_window_ms / 1000, hands_free=c.hands_free
@@ -331,9 +345,13 @@ class Client:
             m = {"type": "error", "message": "the server took too long"}
         rtt = (time.perf_counter() - t0) * 1000
         if m.get("type") != "result":
-            log.warning("dictation failed: %s", m.get("message"))
+            message = str(m.get("message", "")).removeprefix("server error: ")
+            log.warning("dictation failed: %s", message)
             self.sounds.play("error")
-            self._set_state(*self._ready_or_current())
+            state, status = self._ready_or_current()
+            if state == "ready" and message:  # e.g. the online service rejected the key: say so in the menu
+                status = f"Didn't work: {message[:150]}"
+            self._set_state(state, status)
             return
         text = m.get("text", "")
         if not text:
@@ -473,6 +491,17 @@ class Client:
         if self.enabled:
             self.conn.ensure()
 
+    def reconfigure(self) -> None:
+        if self._reconfigure is not None:
+            self._reconfigure()
+
+    def quit(self) -> None:
+        """Stop everything, including the tray icon (which ends run())."""
+        if self.tray is not None:
+            self.tray.quit()
+        else:
+            self.stop()
+
     def open_settings(self) -> None:
         path = self.cfg.source_path
         if path is None:
@@ -559,7 +588,7 @@ class Client:
         print(f"\n  Ready. Hold {key} and speak; release to insert.")
         if c.hands_free:
             print(f"  Double-tap {key} for hands-free; tap it again to stop. {cancel} cancels.")
-        print(f"  Server: {c.server}")
+        print(f"  Speech recognition: {self.label or self.server}")
         if tray:
             from dictate.tray import Tray
 

@@ -1,30 +1,28 @@
 # Dictate: quick start
 
 Hold a key, speak, let go: clean, punctuated text appears where your cursor is, in any app.
-The speech recognition runs on the computer of the person who shared Dictate with you. Your device
-only sends your voice and gets text back. Nothing is saved.
 
-**You'll need from them:** a Tailscale invite and a **link** (it looks like
-`https://name.something.ts.net/?t=…`). The same link works on your phone and your computer. Keep it
-to yourself: anyone with it can use their computer for dictation.
+Dictate needs somewhere to turn your speech into text. When you first open it, it asks which you want:
 
-## 1. Tailscale (every device)
+- **A PC that shares Dictate with me.** Someone (maybe you) runs Dictate on a PC with a graphics card
+  and gave you a **link** (`https://name.something.ts.net/?t=…`) and a Tailscale invite. Free. Your
+  voice only goes to that PC.
+- **This computer's graphics card** (Windows with an NVIDIA card only; Dictate only offers it if you
+  have one). Free and private: nothing leaves your computer. It downloads about 6 GB once.
+- **An online AI service**: OpenAI, Anthropic (Claude), Google (Gemini) or xAI (Grok). You need an
+  **API key** from that service (an account with a payment method or credit; usually a few cents per
+  hour of dictation). Your recordings are sent to that service.
 
-Install Tailscale from https://tailscale.com/download (App Store or Play Store on phones). Sign in,
-accept the invite, and leave it connected. Dictate only works while Tailscale is on.
-
-## 2. Install Dictate
+## 1. Install Dictate
 
 ### Windows
 
 1. Download **Dictate-Windows-Setup.exe** and open it.
 2. If Windows shows "Windows protected your PC", click **More info**, then **Run anyway**. (Dictate
    isn't from the Microsoft Store, so Windows doesn't recognize it yet.)
-3. Click **Install**, then **Finish**.
-4. Dictate asks for your link. Copy the link, paste it in, and click **Connect**.
-5. Hold **Right Ctrl**, speak, and let go.
+3. Click **Install**, then **Finish**. Dictate opens and asks how it should work (step 2).
 
-### Mac
+### Mac (macOS 13 Ventura or newer)
 
 1. Pick the right download. Open the Apple menu  › **About This Mac**:
    - "Chip: Apple M1/M2/M3/M4…": **Dictate-Mac-AppleSilicon.dmg**
@@ -34,13 +32,48 @@ accept the invite, and leave it connected. Dictate only works while Tailscale is
    the app. Click **Done**, then open **System Settings › Privacy & Security**, scroll down to
    "Dictate was blocked…", click **Open Anyway** and confirm with your password. (On older macOS,
    right-click Dictate in Applications, choose **Open**, then **Open** again.) You only do this once.
-4. Dictate asks for your link. Copy the link, paste it in, and click **Connect**.
-5. Dictate asks for three permissions. Allow the **microphone**, then click **Open System Settings**
-   and turn on **Dictate** under **Accessibility** and under **Input Monitoring**. If macOS offers to
-   **Quit & Reopen** Dictate, click it.
-6. Hold **Right Option (⌥)**, speak, and let go.
+4. Dictate asks how it should work (step 2). Afterwards it asks for three permissions: allow the
+   **microphone**, then click **Open System Settings** and turn on **Dictate** under
+   **Accessibility** and under **Input Monitoring**. If macOS offers to **Quit & Reopen** Dictate,
+   click it.
 
-### Phone (iPhone or Android)
+## 2. Set it up
+
+Dictate asks **"Where should your speech be turned into text?"** Pick one and click **Continue**.
+
+### A PC that shares Dictate with me
+
+1. Install Tailscale from https://tailscale.com/download, sign in, accept the invite you were sent,
+   and leave it connected. Dictate only works while Tailscale is on.
+2. Copy your link, then paste it when Dictate asks and click **Connect**.
+
+### An online AI service
+
+1. Pick the service. If you don't have an API key yet, click **Open the website**, sign in, create an
+   API key there and copy it:
+   - OpenAI: platform.openai.com › API keys
+   - Anthropic (Claude): platform.claude.com › API keys
+   - Google (Gemini): aistudio.google.com › Get API key
+   - xAI (Grok): console.x.ai › API keys
+2. Paste the key and click **Check key**. Dictate checks it with the service and picks the right
+   models for you.
+3. **If you chose Claude:** Claude works with text, not audio, so Dictate asks for a second service
+   (OpenAI, Gemini or Grok) to turn your speech into text, and a key for it. Claude then tidies the
+   text up.
+
+Your key is kept in your computer's password store (Windows Credential Manager or the macOS
+Keychain), not in a file, and only ever sent to that service.
+
+### This computer's graphics card
+
+Click **Download**. A window shows the progress (10 to 30 minutes, depending on your connection).
+Keep the computer on and connected until it says it's done. If it stops (no internet, for example),
+open Dictate again and choose the same thing: it picks up where it stopped.
+
+**Then:** Dictate says it's ready. Hold **Right Ctrl** (Windows) or **Right Option ⌥** (Mac),
+speak, and let go.
+
+## 3. The phone (only with a PC that shares Dictate)
 
 1. Open the link in **Safari** (iPhone) or **Chrome** (Android). Allow the microphone.
 2. Add it to your Home Screen: on iPhone, Share › **Add to Home Screen**; on Android, ⋮ › **Add to Home screen**.
@@ -48,7 +81,7 @@ accept the invite, and leave it connected. Dictate only works while Tailscale is
    wherever the cursor is in the text box, and you can edit it freely. Everything in the box is
    copied after each dictation, so you can paste it anywhere.
 
-## 3. Using it on a computer
+## 4. Using it on a computer
 
 | Do this | To |
 |---|---|
@@ -62,7 +95,7 @@ accept the invite, and leave it connected. Dictate only works while Tailscale is
 
 Click where you want the text before you start talking: it goes wherever the cursor is.
 
-## 4. The Dictate menu: turning it off and on, and other settings
+## 5. The Dictate menu: turning it off and on, and other settings
 
 Everything is in Dictate's **microphone icon**:
 
@@ -73,14 +106,14 @@ Everything is in Dictate's **microphone icon**:
 
 | Menu item | What it does |
 |---|---|
-| (first line) | what Dictate is doing right now, e.g. "Ready: hold Right Ctrl and speak" |
+| (first lines) | what Dictate is doing right now ("Ready: hold Right Ctrl and speak"), and what it uses ("Using: Online: OpenAI") |
 | **Turn off Dictate** / **Turn on Dictate** | Off: the hotkey does nothing and Dictate lets go of the microphone and of the connection. Use it when you want your computer's own dictation, a game or another app that uses the same key, or just a break. The icon goes dim. Choose **Turn on Dictate** to bring it back. |
 | **Language** | English, Español, Français |
 | **Hotkey** | the key you hold. Windows: Right Ctrl or Right Alt (useful if your keyboard has no Right Ctrl). Mac: Right Option, Right Command or Fn (for Fn, also set System Settings › Keyboard › "Press 🌐 key to" to **Do Nothing**). |
 | **Microphone** | which microphone to use. "Same as the system" follows your computer's sound settings. |
 | **Sounds** | the small beeps when it starts and stops listening |
 | **Start when I log in** | ticked: Dictate starts by itself when you log in (it's on after setup) |
-| **Connect to a different PC…** | paste a new link, e.g. when you were sent a new one |
+| **Change how Dictate works…** | pick a different option from step 2, paste a new link, or enter a new API key. Dictate restarts with the new setup. |
 | **Advanced settings…** | the settings file, for rare tweaks. You shouldn't need it. |
 | **Quit Dictate** | closes Dictate completely until you open it again (Start menu on Windows, Applications on Mac) or until you next log in |
 
@@ -92,26 +125,36 @@ then use the built-in one: on Windows press **Win + H**; on a Mac use **Edit ›
 hotkey, and other apps can use the microphone at the same time.
 
 **The icon's colors:** white = ready, red = listening, amber = working, dim = turned off, grey with
-a red line = can't reach the PC (open the menu: the first line says why).
+a red line = can't reach the PC or the online service (open the menu: the first line says why).
 
-## 5. Updating and uninstalling
+## 6. Updating and uninstalling
 
-- **Update (Windows):** download the new **Dictate-Windows-Setup.exe** and run it. Your link and
-  settings are kept.
+- **Update (Windows):** download the new **Dictate-Windows-Setup.exe** and run it. Your setup and
+  settings are kept. (With your own graphics card, Dictate updates its engine the next time it starts.)
 - **Update (Mac):** quit Dictate from its menu, drag the new Dictate into Applications and choose
   **Replace**. macOS then forgets the permissions: in **System Settings › Privacy & Security**, under
   **Accessibility** and **Input Monitoring**, select Dictate, remove it with **–**, then open Dictate
   and allow it again.
-- **Uninstall (Windows):** **Settings › Apps › Installed apps › Dictate › Uninstall**.
+- **Uninstall (Windows):** **Settings › Apps › Installed apps › Dictate › Uninstall**. This also
+  deletes the 6 GB download of the graphics-card option. API keys stay in Credential Manager
+  (search for "Credential Manager" in the Start menu › Windows Credentials › the entries with
+  "Dictate" in their name)
+  until you remove them.
 - **Uninstall (Mac):** open Dictate's menu, untick **Start when I log in**, choose **Quit Dictate**,
-  then drag **Dictate** from Applications to the Trash.
+  then drag **Dictate** from Applications to the Trash. API keys stay in the **Keychain Access** app
+  (search for "Dictate") until you delete them.
+- **Stop using an API key:** delete it on the service's website. Dictate can't use it any more.
 
 ## If it doesn't work
 
-- **The icon is grey with a red line:** Tailscale is off on this device, or the other person's
-  computer is off or asleep. Dictate reconnects by itself when both are back.
-- **"The link is out of date" / "wrong token":** ask for a new link, then choose **Connect to a
-  different PC…** in the menu and paste it.
+- **The icon is grey with a red line:** with a PC's link, Tailscale is off on this computer, or the
+  other computer is off or asleep; Dictate reconnects by itself when both are back. Online, check
+  your internet connection.
+- **The menu says "Didn't work: … rejected the API key" or "out of credit":** check your account on
+  the service's website (payment method, credit, limits), or choose **Change how Dictate works…**
+  and enter a new key.
+- **"The link is out of date" / "wrong token":** ask for a new link, then choose **Change how
+  Dictate works…** and paste it.
 - **Nothing happens when you hold the key:** check the icon isn't dim (choose **Turn on Dictate**).
   On a Mac, check that Dictate is turned on under **Accessibility** and **Input Monitoring** in
   System Settings › Privacy & Security.
@@ -119,3 +162,6 @@ a red line = can't reach the PC (open the menu: the first line says why).
 - **No Right Ctrl key (many newer laptops):** pick **Right Alt** under **Hotkey** in the menu.
 - **Mac: "Dictate is already running" or the app won't open from the download:** drag it into
   Applications first, and open it from there.
+- **The graphics-card setup didn't finish:** open Dictate again and choose the same option; it
+  continues where it stopped. If it keeps failing, choose a different option, and send the file
+  `local-setup.log` from `%LOCALAPPDATA%\dictate\logs` to whoever shared Dictate with you.

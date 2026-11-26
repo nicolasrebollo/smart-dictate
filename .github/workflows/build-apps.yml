@@ -35,10 +35,19 @@ jobs:
       - name: Install Inno Setup
         if: runner.os == 'Windows'
         run: choco install innosetup --no-progress -y
-      - name: Install the client and PyInstaller
-        run: uv sync --no-dev --group build
+      - name: Install the app's dependencies (client + online mode) and PyInstaller
+        run: uv sync --no-dev --group build --extra cloud
       - name: Build
         run: uv run --no-sync python packaging/build.py --out "dist/${{ matrix.file }}"
+      - name: Self-test the built app
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then app=build/dist/Dictate/Dictate.exe
+          else app=build/dist/Dictate.app/Contents/MacOS/Dictate; fi
+          status=0
+          "$app" --self-test=selftest.json || status=$?
+          cat selftest.json
+          exit $status
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.file }}

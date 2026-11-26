@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import sys
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -113,7 +114,11 @@ def llm_path(cfg: Config, name: str | None = None) -> Path:
 
 
 def silero_path(cfg: Config) -> Path:
-    return cfg.models_dir / "silero-vad" / "silero_vad.onnx"
+    path = cfg.models_dir / "silero-vad" / "silero_vad.onnx"
+    bundled = Path(getattr(sys, "_MEIPASS", "")) / "silero" / "silero_vad.onnx"
+    if not path.is_file() and getattr(sys, "frozen", False) and bundled.is_file():
+        return bundled  # the desktop app carries its own copy (2 MB) for online mode
+    return path
 
 
 def asr_dir(cfg: Config) -> Path:
@@ -124,6 +129,8 @@ def missing_models(cfg: Config) -> list[str]:
     missing = []
     if not silero_path(cfg).is_file():
         missing.append("Silero VAD")
+    if cfg.asr.backend == "cloud":
+        return missing  # online mode: speech recognition and cleanup run on the online service
     spec = ASR_MODELS.get(cfg.asr.model)
     if spec is None:
         missing.append(f"unknown ASR model {cfg.asr.model}")
@@ -150,6 +157,17 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def _download(url: str, dest: Path) -> None:
+    """Download over HTTPS, checking the certificate against the computer's own trusted list (Python's own
+    list is missing or incomplete in some installs, e.g. python.org's on macOS)."""
+    import shutil
+
+    from dictate.client import tls_context
+
+    with urllib.request.urlopen(url, timeout=60, context=tls_context("wss://")) as r, dest.open("wb") as f:
+        shutil.copyfileobj(r, f, 1 << 20)
+
+
 def download_silero(cfg: Config) -> Path:
     dest = silero_path(cfg)
     if dest.is_file() and _sha256(dest) == SILERO_SHA256:
@@ -158,7 +176,7 @@ def download_silero(cfg: Config) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".part")
     print(f"  Silero VAD: downloading {SILERO_URL}")
-    urllib.request.urlretrieve(SILERO_URL, tmp)
+    _download(SILERO_URL, tmp)
     digest = _sha256(tmp)
     if digest != SILERO_SHA256:
         tmp.unlink(missing_ok=True)
@@ -191,7 +209,7 @@ def download_llama_cpp(cfg: Config) -> Path:
     exe.parent.mkdir(parents=True, exist_ok=True)
     tmp = exe.parent.with_suffix(".zip.part")
     print(f"  llama.cpp {LLAMA_CPP_BUILD}: downloading {LLAMA_CPP_URL}")
-    urllib.request.urlretrieve(LLAMA_CPP_URL, tmp)
+    _download(LLAMA_CPP_URL, tmp)
     digest = _sha256(tmp)
     if digest != LLAMA_CPP_SHA256:
         tmp.unlink(missing_ok=True)

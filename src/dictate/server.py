@@ -100,6 +100,7 @@ class DictateServer:
     def __init__(self, engine, token: str) -> None:
         self.engine = engine
         self.token = token
+        self.port = 0  # the port it listens on, once started (useful with port 0: any free port)
 
     def _authorized(self, request: Request) -> bool:
         given = parse_qs(urlsplit(request.path).query).get("token", [""])[0]
@@ -173,9 +174,39 @@ class DictateServer:
             compression=None,  # audio doesn't compress; skip the latency
             ping_interval=20,
         ) as server:
+            self.port = next(iter(server.sockets)).getsockname()[1]
             if ready is not None:
                 ready.set()
             await server.serve_forever()
+
+
+def start_in_thread(srv: DictateServer, host: str, port: int, timeout_s: float = 30) -> int:
+    """Run `srv` in a background thread. Returns the port once it listens; raises what it failed with."""
+    import threading
+
+    started = threading.Event()
+    failure: list[BaseException] = []
+
+    def run() -> None:
+        async def main() -> None:
+            ready = asyncio.Event()
+            task = asyncio.create_task(srv.serve_forever(host, port, ready))
+            waiter = asyncio.create_task(ready.wait())
+            await asyncio.wait([task, waiter], return_when=asyncio.FIRST_COMPLETED)
+            started.set()
+            await task
+
+        try:
+            asyncio.run(main())
+        except BaseException as e:
+            failure.append(e)
+            started.set()
+
+    threading.Thread(target=run, name="server", daemon=True).start()
+    started.wait(timeout_s)
+    if failure:
+        raise failure[0]
+    return srv.port
 
 
 def tailscale_name() -> str | None:

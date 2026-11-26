@@ -169,3 +169,39 @@ def test_secure_links_use_the_computers_own_trusted_certificates() -> None:
     ctx = tls_context("wss://pc.tail1234.ts.net/ws?token=x")
     assert isinstance(ctx, ssl.SSLContext) and type(ctx).__module__.startswith("truststore")
     assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname
+
+
+def test_online_setup_saves_choices_and_keeps_keys_out_of_the_file(monkeypatch, tmp_path) -> None:
+    """Claude for the cleanup (no speech API), so a second service hears you: as a person would click it."""
+    from dictate import app, dialogs
+    from dictate.cloud import keys, providers
+    from dictate.config import load_config
+
+    path = tmp_path / "config.toml"
+    cfg = load_config(path)
+    choices = iter(["anthropic", "openai"])
+    asked: list[str] = []
+    monkeypatch.setattr(dialogs, "choose", lambda title, text, options, ok="Continue": next(choices))
+    monkeypatch.setattr(dialogs, "message", lambda title, text, buttons=("OK",), default="": "I have my key")
+    monkeypatch.setattr(dialogs, "clipboard_text", lambda: "")
+
+    def ask(title, text, default="", ok="OK", *, secret=False):
+        assert secret  # keys are typed into a dots field
+        asked.append(title)
+        return {"Your Claude API key": "sk-ant-api03-test", "Your OpenAI API key": "sk-proj-test"}[title]
+
+    monkeypatch.setattr(dialogs, "ask", ask)
+    models = {"anthropic": ["claude-opus-5-5", "claude-haiku-5-5"], "openai": ["gpt-transcribe", "gpt-6-luna"]}
+    monkeypatch.setattr(providers, "list_models", lambda p, key, **kw: models[p.id])
+    saved: dict[str, str] = {}
+    monkeypatch.setattr(keys, "set_key", saved.__setitem__)
+
+    assert app._setup_online(cfg)
+    assert asked == ["Your Claude API key", "Your OpenAI API key"]
+    assert saved == {"anthropic": "sk-ant-api03-test", "openai": "sk-proj-test"}
+    text = path.read_text(encoding="utf-8")
+    assert "sk-" not in text  # never in the settings file
+    cfg = load_config(path)
+    assert cfg.client.mode == "online"
+    assert (cfg.online.speech, cfg.online.speech_model) == ("openai", "gpt-transcribe")
+    assert (cfg.online.cleanup, cfg.online.cleanup_model) == ("anthropic", "claude-opus-5-5")

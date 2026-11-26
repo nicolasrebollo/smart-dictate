@@ -1,7 +1,7 @@
 [project]
 name = "dictate"
-version = "0.1.0"
-description = "Push-to-talk dictation with AI cleanup. Models run on your own PC; your Mac, PC and iPhone are light clients."
+version = "0.2.0"
+description = "Push-to-talk dictation with AI cleanup, on your own GPU, a PC that shares one, or an online AI service."
 license = "MIT"
 requires-python = ">=3.12"
 # The client (Mac / PC): hotkey, microphone, paste. A few MB, no models.
@@ -15,9 +15,19 @@ dependencies = [
     "truststore>=0.10",  # check the PC's certificate like a browser (Mac Keychain / Windows store)
     "pystray>=0.19",
     "pillow>=11",
+    "keyring>=25",  # API keys for online mode live in the system keychain, not the settings file
+    "anthropic>=2.14",  # Claude, for the AI cleanup in online mode
 ]
 
 [project.optional-dependencies]
+# Online mode in the desktop app: speech detection runs locally (Silero on the CPU), the speech
+# recognition and the AI cleanup run on the online service you choose.
+cloud = [
+    "numpy>=2",
+    "rapidfuzz>=3",
+    "onnxruntime>=1.23",
+    "onnxruntime>=1.23,<1.24; sys_platform == 'darwin'",  # the last version with Intel Mac wheels (macOS 13+)
+]
 # The server (the PC with the GPU): speech recognition + AI cleanup.
 server = [
     "numpy>=2",
@@ -46,6 +56,9 @@ build = [
 ]
 
 [tool.uv]
+# Both install the `onnxruntime` module (CPU build vs GPU build), so never together. The server's GPU
+# build also runs online mode (it includes the CPU), so a server checkout needs only `--extra server`.
+conflicts = [[{ extra = "cloud" }, { extra = "server" }]]
 # Only resolve package versions that ship wheels for this platform (some nvidia-* wheels are Linux-only).
 required-environments = ["sys_platform == 'win32' and platform_machine == 'AMD64'"]
 

@@ -7,6 +7,10 @@ __all__ = ["Completion", "LLMBackend", "LLMError", "LLMTimeout", "Message", "cre
 
 def create_llm(cfg) -> LLMBackend:
     """Start (or connect to) the configured cleanup-model backend."""
+    if cfg.cleanup.backend == "cloud":
+        from dictate.cloud import create_cleanup
+
+        return create_cleanup(cfg)
     if cfg.cleanup.backend == "ollama":
         from dictate.llm.ollama import OllamaBackend
 

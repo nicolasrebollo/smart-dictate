@@ -1,5 +1,9 @@
-# PyInstaller recipe for the Dictate desktop app: the client only (hotkey, microphone, paste, tray).
-# No models, no server code. Run packaging/build.py rather than this file directly.
+# PyInstaller recipe for the Dictate desktop app. Run packaging/build.py rather than this file directly.
+#
+# The app holds the client (hotkey, microphone, paste, tray) and the engine for online mode (speech
+# detection on the CPU, spoken commands, formatting; the speech recognition and the AI cleanup run on
+# the online service). It holds no speech or cleanup models. On Windows it also carries what local
+# mode needs to set itself up (uv, a Dictate wheel, the pinned requirements), from build/runtime.
 # ruff: noqa
 import sys
 from pathlib import Path
@@ -7,28 +11,40 @@ from pathlib import Path
 from dictate import __version__
 
 ROOT = Path(SPECPATH).parent
-ICONS = ROOT / "build" / "icons"
+BUILD = ROOT / "build"
+ICONS = BUILD / "icons"
 MAC = sys.platform == "darwin"
 
+hidden = [
+    "dictate.cloud.speech", "dictate.cloud.chat", "dictate.cloud.claude", "dictate.cloud.keys",
+    "dictate.engine", "dictate.server", "dictate.modes",
+]
 if MAC:
-    hidden = ["pystray._darwin", "PyObjCTools.AppHelper", "Quartz", "ApplicationServices", "truststore._macos"]
+    hidden += ["pystray._darwin", "PyObjCTools.AppHelper", "Quartz", "ApplicationServices", "truststore._macos",
+               "keyring.backends.macOS"]
 else:
-    hidden = ["pystray._win32", "pynput.keyboard._win32", "pynput.mouse._win32", "truststore._windows"]
+    hidden += ["pystray._win32", "pynput.keyboard._win32", "pynput.mouse._win32", "truststore._windows",
+               "keyring.backends.Windows"]
 
-# Never needed by the client (some are installed on the PC that also runs the server).
+# Only the PC that runs the models needs these (local mode installs them separately, see local_gpu.py).
 excludes = [
-    "numpy", "onnxruntime", "onnx_asr", "onnx", "soundfile", "rapidfuzz", "huggingface_hub", "jiwer",
-    "pytest", "dictate.engine", "dictate.server", "dictate.asr", "dictate.llm", "dictate.bench",
-    "dictate.pipeline", "dictate.cleanup", "dictate.models",
+    "onnx_asr", "onnx", "soundfile", "huggingface_hub", "jiwer", "pytest", "dictate.bench",
+    "dictate.asr.parakeet", "nvidia", "onnxruntime.transformers", "onnxruntime.quantization",
+    "onnxruntime.tools", "sympy", "matplotlib", "IPython",
 ]
 if MAC:
     excludes.append("tkinter")  # dialogs use AppleScript on the Mac
+
+datas = [(str(BUILD / "silero" / "silero_vad.onnx"), "silero")]  # speech detection for online mode
+if not MAC:
+    datas.append((str(BUILD / "runtime"), "runtime"))  # local mode's setup (packaging/build.py)
 
 a = Analysis(
     [str(ROOT / "packaging" / "dictate_app.py")],
     pathex=[str(ROOT / "src")],
     hiddenimports=hidden,
     excludes=excludes,
+    datas=datas,
 )
 pyz = PYZ(a.pure)
 exe = EXE(
@@ -53,11 +69,11 @@ if MAC:
             "CFBundleDisplayName": "Dictate",
             "CFBundleShortVersionString": __version__,
             "LSUIElement": True,  # lives in the menu bar, no Dock icon
-            "LSMinimumSystemVersion": "11.0",
+            "LSMinimumSystemVersion": "13.0",  # onnxruntime (speech detection) needs macOS 13
             "NSHighResolutionCapable": True,
             "NSMicrophoneUsageDescription": (
-                "Dictate listens while you hold the hotkey and sends your voice to your own PC, "
-                "which turns it into text."
+                "Dictate listens while you hold the hotkey and turns your voice into text, on the PC you "
+                "connected to or the online service you chose."
             ),
         },
     )
