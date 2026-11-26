@@ -94,6 +94,44 @@ def create_message_window() -> HWND:
     return hwnd
 
 
+user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), HWND, UINT, UINT]
+user32.GetMessageW.restype = BOOL
+user32.TranslateMessage.argtypes = [ctypes.POINTER(wintypes.MSG)]
+user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
+user32.DispatchMessageW.restype = ctypes.c_ssize_t
+
+
+def create_pumped_message_window() -> HWND:
+    """A message-only window on its own thread that keeps pumping messages.
+
+    The clipboard owner must answer messages: Windows sends WM_DESTROYCLIPBOARD /
+    WM_RENDERFORMAT to it (and waits) whenever anyone empties or reads the clipboard. A window on a
+    thread that doesn't pump would stall every clipboard operation for ~5 s."""
+    import threading
+
+    ready = threading.Event()
+    holder: dict[str, object] = {}
+
+    def run() -> None:
+        try:
+            holder["hwnd"] = create_message_window()
+        except OSError as e:
+            holder["error"] = e
+            ready.set()
+            return
+        ready.set()
+        msg = wintypes.MSG()
+        while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+            user32.TranslateMessage(ctypes.byref(msg))
+            user32.DispatchMessageW(ctypes.byref(msg))
+
+    threading.Thread(target=run, name="clipboard-window", daemon=True).start()
+    ready.wait(5)
+    if "error" in holder:
+        raise holder["error"]  # type: ignore[misc]
+    return holder["hwnd"]  # type: ignore[return-value]
+
+
 # -- SendInput ---------------------------------------------------------------------------
 INPUT_KEYBOARD = 1
 KEYEVENTF_KEYUP = 0x0002

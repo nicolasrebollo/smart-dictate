@@ -1,29 +1,19 @@
-"""Streaming transcription while the user is still speaking.
+"""Streaming transcription on the server while the user is still speaking.
 
-  audio blocks + VAD probs ──► Segmenter ──(cut at a pause)──► COMMIT job: transcribe that segment
-                     │
-                     └─(every ~400 ms)──► PREVIEW job: transcribe the open segment ──► Stabilizer ──► overlay
+  audio + VAD probs ──► Segmenter ──(cut at a natural pause)──► transcribe that phrase now
 
-On key release only the last open segment is left (FINAL job, highest priority), so the
-release-to-text time no longer grows with the length of the dictation.
-
-Segments partition the timeline exactly (each cut is the start of the next segment), so no
-audio is dropped or duplicated; each segment is VAD-trimmed (with padding) before ASR.
-
-Priority rule: one ASR worker thread runs jobs in order FINAL > COMMIT > PREVIEW. Previews
-are skipped if one is already queued, dropped once their segment is committed, and never run
-after release.
+On key release only the last open phrase is left to transcribe, so the release-to-text time
+doesn't grow with the length of the dictation. Phrases partition the audio exactly (each cut is
+the start of the next phrase): nothing is dropped or duplicated. Each phrase is VAD-trimmed
+(with padding) before ASR. One ASR worker thread runs jobs by priority: the final phrase first.
 """
 
 from __future__ import annotations
 
-import difflib
 import itertools
 import logging
 import queue
-import re
 import threading
-import time
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
@@ -31,7 +21,6 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from dictate.asr.base import ASRBackend
-from dictate.cleanup.formatter import remove_fillers, tidy_spacing
 from dictate.vad import FRAME, FRAME_MS, SAMPLE_RATE, FloatArray, trim
 
 log = logging.getLogger(__name__)
@@ -86,52 +75,9 @@ class Segmenter:
         self._silence_run = 0 if self._in_speech else self._silence_run
         return frame
 
-    @property
-    def open_has_speech(self) -> bool:
-        return self._had_speech
-
-
-# -- preview stabilization (LocalAgreement-2) ----------------------------------------------------
-def display_text(text: str, language: str = "en") -> str:
-    """Preview-only: hide filler sounds (cleanup removes them anyway), so they never flicker away."""
-    out = tidy_spacing(remove_fillers(text, language), language)
-    return out[:1].upper() + out[1:] if out else out
-
-
-def _norm(word: str) -> str:
-    return re.sub(r"[^\w']", "", word.lower())
-
-
-class Stabilizer:
-    """Words become *stable* once two consecutive hypotheses agree on them. Stable words are
-    never taken back while the segment is open, so the preview doesn't flicker."""
-
-    def __init__(self) -> None:
-        self.stable: list[str] = []
-        self._prev: list[str] | None = None
-
-    def update(self, hypothesis: str) -> tuple[list[str], list[str]]:
-        words = hypothesis.split()
-        if self._prev is not None:
-            agree = 0
-            for a, b in zip(self._prev, words, strict=False):
-                if _norm(a) != _norm(b):
-                    break
-                agree += 1
-            consistent = all(_norm(s) == _norm(w) for s, w in zip(self.stable, words, strict=False))
-            if consistent and agree > len(self.stable):
-                self.stable = words[:agree]
-        self._prev = words
-        k = len(self.stable)
-        unstable = words[k:] if all(_norm(s) == _norm(w) for s, w in zip(self.stable, words, strict=False)) else []
-        return list(self.stable), unstable
-
-    def reset(self) -> None:
-        self.stable, self._prev = [], None
-
 
 # -- ASR worker ----------------------------------------------------------------------------------
-FINAL, COMMIT, PREVIEW = 0, 1, 2
+FINAL, COMMIT = 0, 1
 
 
 @dataclass(order=True)
@@ -140,23 +86,21 @@ class _Job:
     seq: int
     fn: Callable[[], str] = field(compare=False)
     future: Future = field(compare=False)
-    still_wanted: Callable[[], bool] = field(compare=False, default=lambda: True)
 
 
 class ASRWorker:
-    """Single thread that owns the ASR model; runs jobs by priority."""
+    """Single thread that owns the ASR model; runs jobs by priority (final phrases first)."""
 
     def __init__(self, asr: ASRBackend, lock: threading.Lock) -> None:
         self.asr = asr
         self.lock = lock  # shared with KeepWarm, which never blocks on it
         self._q: queue.PriorityQueue[_Job] = queue.PriorityQueue()
         self._seq = itertools.count()
-        self._thread = threading.Thread(target=self._run, name="asr-worker", daemon=True)
-        self._thread.start()
+        threading.Thread(target=self._run, name="asr-worker", daemon=True).start()
 
-    def submit(self, priority: int, fn: Callable[[], str], still_wanted: Callable[[], bool] | None = None) -> Future:
+    def submit(self, priority: int, fn: Callable[[], str]) -> Future:
         fut: Future = Future()
-        self._q.put(_Job(priority, next(self._seq), fn, fut, still_wanted or (lambda: True)))
+        self._q.put(_Job(priority, next(self._seq), fn, fut))
         return fut
 
     def transcribe(self, audio: FloatArray) -> str:
@@ -165,9 +109,6 @@ class ASRWorker:
     def _run(self) -> None:
         while True:
             job = self._q.get()
-            if not job.still_wanted():
-                job.future.cancel()
-                continue
             try:
                 with self.lock:
                     job.future.set_result(job.fn())
@@ -176,21 +117,7 @@ class ASRWorker:
                 job.future.set_exception(e)
 
 
-# -- one streaming utterance ----------------------------------------------------------------------
-PreviewCallback = Callable[[str, list[str], list[str]], None]  # committed text, stable words, unstable words
-CommitCallback = Callable[[int, str], None]  # segment index, text
-
-
-@dataclass
-class StreamStats:
-    segments: int = 0
-    previews: int = 0
-    previews_skipped: int = 0
-    revised_words: int = 0  # stable preview words that the committed text changed (flicker)
-    stable_words: int = 0
-    moved_words: int = 0  # stable words that turned out to belong to the next segment (not revised)
-
-
+# -- one utterance ---------------------------------------------------------------------------------
 @dataclass
 class StreamConfig:
     threshold: float = 0.5
@@ -200,45 +127,28 @@ class StreamConfig:
     pad_ms: float = 250
     max_pause_ms: float = 700
     min_speech_ms: float = 150
-    preview: bool = True
-    preview_interval_ms: float = 400
-    preview_min_speech_s: float = 0.4
-    language: str = "en"
 
 
 class StreamingSession:
-    """Fed from the audio/VAD worker thread with (block, prob) pairs."""
+    """Fed (in order) with 512-sample float32 blocks and their VAD probabilities."""
 
     def __init__(
-        self,
-        worker: ASRWorker,
-        cfg: StreamConfig,
-        *,
-        on_preview: PreviewCallback | None = None,
-        on_commit: CommitCallback | None = None,
+        self, worker: ASRWorker, cfg: StreamConfig, *, on_commit: Callable[[int, str], None] | None = None
     ) -> None:
         self.worker = worker
         self.cfg = cfg
-        self.on_preview = on_preview
         self.on_commit = on_commit
         self.segmenter = Segmenter(
             threshold=cfg.threshold, pause_ms=cfg.pause_ms, min_segment_s=cfg.min_segment_s,
             max_segment_s=cfg.max_segment_s,
         )  # fmt: skip
-        self.stabilizer = Stabilizer()
-        self.stats = StreamStats()
+        self.segments = 0
         self._buf = np.zeros(SAMPLE_RATE * 30, dtype=np.float32)  # grows by doubling
         self._n = 0
-        self._cuts: list[int] = [0]  # frame indices where segments start
-        self._futures: list[Future] = []  # commit futures, in segment order
-        self._texts: dict[int, str] = {}
-        self._lock = threading.Lock()
+        self._cuts: list[int] = [0]
+        self._futures: list[Future] = []
         self._finalized = False
-        self._preview_pending = False
-        self._last_preview = 0.0
-        self._open_index = 0
 
-    # -- feeding (vad-worker thread) --------------------------------------------------------------
     def feed(self, block: FloatArray, probs: list[float]) -> None:
         if self._finalized:
             return
@@ -252,12 +162,10 @@ class StreamingSession:
             cut = self.segmenter.push(p)
             if cut is not None:
                 self._commit_until(cut)
-        self._maybe_preview()
 
     def _audio(self, start_frame: int, end_frame: int | None) -> tuple[FloatArray, list[float]]:
         end = self._n if end_frame is None else min(self._n, end_frame * FRAME)
-        probs = self.segmenter.probs[start_frame:end_frame]
-        return self._buf[start_frame * FRAME : end].copy(), probs
+        return self._buf[start_frame * FRAME : end].copy(), self.segmenter.probs[start_frame:end_frame]
 
     def _transcribe_segment(self, audio: FloatArray, probs: list[float]) -> str:
         c = self.cfg
@@ -270,109 +178,23 @@ class StreamingSession:
         start = self._cuts[-1]
         self._cuts.append(cut)
         audio, probs = self._audio(start, cut)
-        with self._lock:  # a late preview of the old segment must never touch the new one
-            self._open_index = index + 1
-            stable_now = list(self.stabilizer.stable)
-            self.stabilizer = Stabilizer()
 
         def run() -> str:
             text = self._transcribe_segment(audio, probs)
-            with self._lock:
-                self._texts[index] = text
-                leftover = self._note_revisions(stable_now, text)
-                fresh = not self.stabilizer.stable and self._open_index == index + 1
             if self.on_commit:
                 self.on_commit(index, text)
-            # Words the preview showed that landed in the next segment stay visible (dimmed)
-            # until that segment's first preview, instead of blinking out.
-            self._emit_preview([], leftover if fresh else [])
             return text
 
         self._futures.append(self.worker.submit(COMMIT, run))
-        self.stats.segments += 1
-
-    def _note_revisions(self, stable: list[str], committed: str) -> list[str]:
-        """Count stable preview words the committed text changed (aligned, so a dropped filler
-        doesn't count every later word). Returns stable words past the end of the committed text."""
-        a = [_norm(w) for w in stable]
-        b = [_norm(w) for w in committed.split()]
-        blocks = [bl for bl in difflib.SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks() if bl.size]
-        matched = sum(bl.size for bl in blocks)
-        leftover: list[str] = []
-        if blocks:
-            last = blocks[-1]
-            if last.b + last.size == len(b):  # committed text ended; stable text kept going
-                leftover = stable[last.a + last.size :]
-        self.stats.stable_words += len(stable)
-        self.stats.revised_words += len(stable) - matched - len(leftover)
-        self.stats.moved_words += len(leftover)
-        return leftover
-
-    def committed_text(self) -> str:
-        with self._lock:
-            return " ".join(self._texts[i] for i in sorted(self._texts) if self._texts[i])
-
-    def _emit_preview(self, stable: list[str], unstable: list[str]) -> None:
-        if self.on_preview and not self._finalized:
-            try:
-                self.on_preview(display_text(self.committed_text(), self.cfg.language), stable, unstable)
-            except Exception:
-                log.debug("preview callback failed", exc_info=True)
-
-    def _maybe_preview(self) -> None:
-        c = self.cfg
-        if not c.preview or self.on_preview is None or self._finalized:
-            return
-        now = time.perf_counter()
-        if now - self._last_preview < c.preview_interval_ms / 1000:
-            return
-        if self._preview_pending:
-            self.stats.previews_skipped += 1  # the previous preview hasn't finished: skip this round
-            self._last_preview = now
-            return
-        start = self._cuts[-1]
-        open_frames = len(self.segmenter.probs) - start
-        if not self.segmenter.open_has_speech or open_frames * FRAME_MS < c.preview_min_speech_s * 1000:
-            return
-        audio, probs = self._audio(start, None)
-        with self._lock:
-            index = self._open_index
-            stabilizer = self.stabilizer
-        self._last_preview = now
-        self._preview_pending = True
-
-        def run() -> str:
-            try:
-                text = self._transcribe_segment(audio, probs)
-                with self._lock:
-                    current = index == self._open_index and not self._finalized
-                    if current:
-                        stable, unstable = stabilizer.update(display_text(text, self.cfg.language))
-                        self.stats.previews += 1
-                if current:
-                    self._emit_preview(stable, unstable)
-                return text
-            finally:
-                self._preview_pending = False
-
-        def wanted() -> bool:
-            ok = index == self._open_index and not self._finalized
-            if not ok:
-                self._preview_pending = False
-            return ok
-
-        self.worker.submit(PREVIEW, run, still_wanted=wanted)
+        self.segments += 1
 
     def cancel(self) -> None:
-        """Discard: stop previews and ignore any further audio."""
         self._finalized = True
 
-    # -- release (processor thread) -------------------------------------------------------------
-    def finalize(self, timeout_s: float = 10.0) -> list[str]:
-        """Transcribe the last open segment and return every segment's text, in order."""
+    def finalize(self, timeout_s: float = 15.0) -> list[str]:
+        """Transcribe the last open phrase and return every phrase's text, in order."""
         self._finalized = True
-        start = self._cuts[-1]
-        audio, probs = self._audio(start, None)
+        audio, probs = self._audio(self._cuts[-1], None)
         final = self.worker.submit(FINAL, lambda: self._transcribe_segment(audio, probs))
         texts = [f.result(timeout=timeout_s) for f in self._futures]
         texts.append(final.result(timeout=timeout_s))

@@ -1,1 +1,1 @@
-"""Text cleanup: deterministic formatter, voice commands, replacements (LLM pass arrives in M2)."""
+"""Text cleanup: deterministic formatter, voice commands, vocabulary, and the AI cleanup pass."""

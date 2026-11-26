@@ -1,9 +1,9 @@
 """Global hotkeys: hold-to-talk, double-tap hands-free, Esc cancel, Shift-at-release = raw.
 
 `GestureRecognizer` is a pure state machine (feed it key events + timestamps, it returns
-actions), so it is unit-tested without a keyboard. `HotkeyListener` wires it to pynput's
-low-level Windows hook. Hook callbacks only enqueue events: Windows silently removes a
-low-level hook whose callback takes too long.
+actions), so it is unit-tested without a keyboard. `HotkeyListener` wires it to pynput, which
+works on Windows and macOS. Key callbacks only enqueue events: Windows silently removes a
+keyboard hook whose callback takes too long.
 """
 
 from __future__ import annotations
@@ -129,39 +129,38 @@ class GestureRecognizer:
         self._state, self._deadline = _S.IDLE, None
 
 
-# -- key name parsing --------------------------------------------------------------------
-VK_NAMES = {
-    "ctrl_r": 0xA3,
-    "ctrl_l": 0xA2,
-    "shift_r": 0xA1,
-    "shift_l": 0xA0,
-    "alt_r": 0xA5,
-    "alt_l": 0xA4,
-    "esc": 0x1B,
-    "escape": 0x1B,
-    "caps_lock": 0x14,
-    "pause": 0x13,
-    "scroll_lock": 0x91,
-    "insert": 0x2D,
-    "menu": 0x5D,
-    "apps": 0x5D,
-    **{f"f{i}": 0x6F + i for i in range(1, 25)},
-}
-MODIFIER_GROUPS = {"shift": {0xA0, 0xA1, 0x10}, "ctrl": {0xA2, 0xA3, 0x11}, "alt": {0xA4, 0xA5, 0x12}}
-
-
-def parse_key(name: str) -> set[int]:
-    """Key name -> set of Windows virtual-key codes it matches."""
+# -- key names ---------------------------------------------------------------------------
+def parse_key(name: str) -> frozenset[str]:
+    """Config key name -> the pynput key names it matches ("shift" matches either Shift)."""
     n = name.strip().lower()
-    if n in MODIFIER_GROUPS:
-        return set(MODIFIER_GROUPS[n])
-    if n in VK_NAMES:
-        return {VK_NAMES[n]}
-    if n.startswith("vk:"):
-        return {int(n[3:], 0)}
+    groups = {
+        "shift": {"shift", "shift_l", "shift_r"},
+        "ctrl": {"ctrl", "ctrl_l", "ctrl_r"},
+        "alt": {"alt", "alt_l", "alt_r", "alt_gr"},
+        "option": {"alt", "alt_l", "alt_r"},
+        "cmd": {"cmd", "cmd_l", "cmd_r"},
+        "alt_r": {"alt_r", "alt_gr"},  # Windows reports Right Alt as AltGr on many layouts
+        "option_r": {"alt_r"},
+        "escape": {"esc"},
+    }
+    if n in groups:
+        return frozenset(groups[n])
+    known = {"ctrl_l", "ctrl_r", "shift_l", "shift_r", "alt_l", "cmd_l", "cmd_r", "esc", "caps_lock", "fn",
+             "pause", "scroll_lock", "insert", "menu", "space", "tab", *(f"f{i}" for i in range(1, 21))}  # fmt: skip
+    if n in known:
+        return frozenset({n})
     if len(n) == 1:
-        return {ord(n.upper())}
+        return frozenset({f"char:{n}"})
     raise ValueError(f"unknown key name {name!r}")
+
+
+def key_name(key: Any) -> str:
+    """pynput key object -> name used by parse_key."""
+    name = getattr(key, "name", None)
+    if name:
+        return str(name)
+    char = getattr(key, "char", None)
+    return f"char:{char.lower()}" if char else f"vk:{getattr(key, 'vk', '?')}"
 
 
 class HotkeyListener:
@@ -175,88 +174,104 @@ class HotkeyListener:
         ptt: str = "ctrl_r",
         cancel: str = "esc",
         raw_modifier: str = "shift",
+        is_injecting: Callable[[], bool] = lambda: False,
     ) -> None:
         self._rec = recognizer
         self._on_event = on_event
         self._ptt = parse_key(ptt)
         self._cancel = parse_key(cancel)
         self._raw = parse_key(raw_modifier)
-        self._q: queue.Queue[tuple[str, int, float]] = queue.Queue()
-        self._down: set[int] = set()
+        self._is_injecting = is_injecting  # our own simulated Ctrl/Cmd+V must not look like typing
+        self._q: queue.Queue[tuple[str, str, float]] = queue.Queue()
+        self._down: set[str] = set()
         self._listener: Any = None
         self._thread = threading.Thread(target=self._run, name="hotkeys", daemon=True)
-        self._suppressed: set[int] = set()
+        self._esc_suppressed = False
 
     def start(self) -> None:
+        import sys
+
+        if sys.platform == "darwin":  # pynput's macOS listener can crash Python on recent macOS
+            from dictate.hotkeys_mac import MacKeyTap
+
+            self._listener = MacKeyTap(lambda kind, name: self._q.put((kind, name, time.perf_counter())))
+            self._listener.start()  # raises PermissionError with instructions if macOS refuses
+            self._thread.start()
+            return
+
         from pynput import keyboard
 
-        from dictate.platform_win import INJECTED_TAG
+        def on_press(key: Any) -> None:
+            if not self._is_injecting():
+                self._q.put(("down", key_name(key), time.perf_counter()))
 
-        def win32_filter(msg: int, data: Any) -> bool:
-            if data.dwExtraInfo == INJECTED_TAG:
-                return False  # our own Ctrl+V / typing: don't treat as user input
-            vk = int(data.vkCode)
-            is_up = msg in (0x0101, 0x0105)  # WM_KEYUP / WM_SYSKEYUP
-            t = time.perf_counter()
-            self._q.put(("up" if is_up else "down", vk, t))
-            # Swallow Esc while recording so it doesn't also close a dialog in the target app.
-            if vk in self._cancel and (self._rec.recording or vk in self._suppressed):
-                if is_up:
-                    self._suppressed.discard(vk)
-                else:
-                    self._suppressed.add(vk)
-                self._listener.suppress_event()
-            return True
+        def on_release(key: Any) -> None:
+            if not self._is_injecting():
+                self._q.put(("up", key_name(key), time.perf_counter()))
 
-        self._listener = keyboard.Listener(win32_event_filter=win32_filter)
+        kwargs: dict[str, Any] = {}
+        if sys.platform == "win32":
+            from dictate.platform_win import INJECTED_TAG
+
+            def win32_filter(msg: int, data: Any) -> bool:
+                # Ignore only our own synthetic keys (Ctrl+V), not other tools' (AutoHotkey, PowerToys remaps).
+                if data.dwExtraInfo == INJECTED_TAG:
+                    return False
+                # Swallow Esc while recording so it doesn't also close a dialog in the target app.
+                if data.vkCode == 0x1B and "esc" in self._cancel and (self._rec.recording or self._esc_suppressed):
+                    is_up = msg in (0x0101, 0x0105)
+                    self._q.put(("up" if is_up else "down", "esc", time.perf_counter()))
+                    self._esc_suppressed = not is_up
+                    self._listener.suppress_event()
+                return True
+
+            kwargs["win32_event_filter"] = win32_filter
+        self._listener = keyboard.Listener(on_press=on_press, on_release=on_release, **kwargs)
         self._listener.start()
         self._thread.start()
 
     def stop(self) -> None:
         if self._listener is not None:
             self._listener.stop()
-        self._q.put(("quit", 0, 0.0))
+        self._q.put(("quit", "", 0.0))
 
     def _run(self) -> None:
         while True:
             deadline = self._rec.deadline
             timeout = None if deadline is None else max(0.0, deadline - time.perf_counter())
             try:
-                kind, vk, t = self._q.get(timeout=timeout)
+                kind, name, t = self._q.get(timeout=timeout)
             except queue.Empty:
                 self._emit(self._rec.tick(time.perf_counter()))
                 continue
             if kind == "quit":
                 return
             try:
-                self._emit(self._handle(kind, vk, t))
+                self._emit(self._handle(kind, name, t))
                 self._emit(self._rec.tick(time.perf_counter()))
             except Exception:
                 log.exception("hotkey handling failed")
                 self._rec.reset()
 
-    def _handle(self, kind: str, vk: int, t: float) -> list[Event]:
+    def _handle(self, kind: str, name: str, t: float) -> list[Event]:
         if kind == "down":
-            repeat = vk in self._down
-            self._down.add(vk)
-            if vk in self._raw:
-                self._rec.raw_mod(True)
-                return []
-            if vk in self._ptt:
-                return [] if repeat else self._rec.ptt_down(t)
-            if vk in self._cancel:
-                return [] if repeat else self._rec.cancel_down(t)
+            repeat = name in self._down
+            self._down.add(name)
             if repeat:
                 return []
-            events = self._rec.other_key_down(t)
-            if events:
-                log.debug("other key vk=0x%02X while recording -> %s", vk, events[0].reason)
-            return events
-        self._down.discard(vk)
-        if vk in self._raw:
+            if name in self._raw:
+                self._rec.raw_mod(True)
+                return []
+            if name in self._ptt:
+                return self._rec.ptt_down(t)
+            if name in self._cancel:
+                return self._rec.cancel_down(t)
+            return self._rec.other_key_down(t)
+        self._down.discard(name)
+        if name in self._raw:
             self._rec.raw_mod(False)
             return []
-        if vk in self._ptt:
+        if name in self._ptt:
             return self._rec.ptt_up(t)
         return []
 
@@ -266,3 +281,16 @@ class HotkeyListener:
                 self._on_event(ev)
             except Exception:
                 log.exception("hotkey action %s failed", ev.action)
+
+
+def display_key(name: str) -> str:
+    """Config key name -> what's printed on the keyboard."""
+    import sys
+
+    mac = sys.platform == "darwin"
+    names = {
+        "alt_r": "Right Option (⌥)" if mac else "Right Alt", "alt_l": "Left Option (⌥)" if mac else "Left Alt",
+        "ctrl_r": "Right Control" if mac else "Right Ctrl", "ctrl_l": "Left Control" if mac else "Left Ctrl",
+        "cmd_r": "Right Command (⌘)", "cmd_l": "Left Command (⌘)", "shift": "Shift", "esc": "Esc", "fn": "Fn",
+    }  # fmt: skip
+    return names.get(name.strip().lower(), name.upper() if len(name) <= 3 else name)

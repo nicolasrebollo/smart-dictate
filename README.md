@@ -1,182 +1,117 @@
 # dictate
 
-Local, private push-to-talk dictation for Windows. Hold a key, speak, release: your words appear
-at the cursor in any app. Speech recognition runs on your own GPU/CPU; nothing leaves the machine.
+Hold a key, speak, let go: clean, punctuated text appears wherever your cursor is (VS Code,
+browsers, Outlook, Slack, anything). It works on your **PC, Mac and iPhone**.
 
-**Status: Milestone 3** (streaming, live preview and incremental cleanup). Vocabulary and history (M4)
-and a tray app (M5) are next. Design: [local-dictation-build-prompt.md](local-dictation-build-prompt.md).
-
-## Setup (once)
-
-Needs Windows 10/11, Python 3.12 and [uv](https://docs.astral.sh/uv/). An NVIDIA GPU is optional.
-
-Run these in Command Prompt or PowerShell, from the project folder:
-
-1. Install dependencies (no PyTorch): `uv sync`
-2. Download models (~5.5 GB: speech recognition, the llama.cpp runtime and the cleanup model). This is
-   the only command that uses the network: `uv run dictate setup`
-3. Mic check (prints what you say instead of typing it): `uv run dictate run --dry-run`
-
-## Use
-
-Start dictate and leave the window open (Ctrl+C quits):
+The speech recognition and the AI cleanup run on **your PC's GPU**. Your Mac and iPhone are light
+clients: they stream your voice to the PC and get text back. They download no models (the client is
+about 20 MB). Nothing goes to a cloud service. Tailscale connects your own devices directly, encrypted.
 
 ```
-uv run dictate
+ Mac / PC client ──┐                       ┌─ speech recognition (Parakeet, GPU)
+ (hotkey + paste)  ├── your voice ──► PC ──┤
+ iPhone web app ───┘   ◄── clean text ──   └─ AI cleanup (Gemma, GPU)
 ```
+
+## 1. The PC (once)
+
+You need Windows, an NVIDIA GPU, Python 3.12 and [uv](https://docs.astral.sh/uv/). In this folder:
+
+1. `uv sync --extra server` installs everything.
+2. `uv run dictate setup` downloads the models (about 6 GB, once).
+3. `uv run dictate pc` starts the server and the hotkey client, and adds a tray icon.
+4. `uv run dictate autostart on` starts it automatically when you log in.
+
+The PC must be on for your Mac and iPhone to work.
+
+## 2. Tailscale (once, so the Mac and iPhone work from anywhere)
+
+1. Install [Tailscale](https://tailscale.com/download) on the PC, the Mac and the iPhone, and sign in
+   with the same account on all three.
+2. On the PC, run `tailscale serve --bg 8765`. This gives the server an HTTPS address that only your
+   devices can reach.
+3. Restart `uv run dictate pc`. It now prints the exact settings for your Mac and the link for your iPhone.
+
+## 3. The Mac
+
+1. Install uv: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+2. Copy this folder to the Mac, then run `uv sync` in it. That installs the client only, no models.
+3. Run `uv run dictate config --edit` and fill in the `[client]` section with what the PC printed:
+   ```toml
+   server = "wss://your-pc.your-tailnet.ts.net"
+   token = "…"
+   ```
+4. Run `uv run dictate`. The first time, allow the app you ran it from (Terminal) in **System Settings
+   › Privacy & Security** under **Microphone**, **Accessibility** and **Input Monitoring**, then run it again.
+5. Run `uv run dictate autostart on` to start it at login.
+
+The Mac hotkey is **Right Option**.
+
+## 4. The iPhone
+
+1. Make sure Tailscale is on.
+2. Open the link the PC printed (`https://your-pc…ts.net/#t=…`) in **Safari**.
+3. Tap Share › **Add to Home Screen**.
+
+Open **Dictate** from your home screen. Hold the button, speak and let go, or tap to start and tap to
+stop. The cleaned text is **copied automatically**; paste it into any app. There's also a Share button.
+(iOS doesn't let an app outside the App Store type into other apps, so copying is the closest it gets.)
+
+## Using it (Mac and PC)
 
 | Do this | To |
 |---|---|
-| Hold **Right Ctrl**, speak, release | insert text at the cursor |
-| Double-tap **Right Ctrl** … tap again | hands-free dictation |
-| **Esc** while recording | cancel |
-| Hold **Shift** while releasing | raw text (skips AI cleanup for that utterance) |
-| Say "new line" / "new paragraph" | line breaks (when said as a phrase of their own) |
-| Say "scratch that" | drop the previous sentence, or undo the previous insert |
-| Say "snake case user id", "camel case get user", "dash dash verbose" | `user_id`, `getUser`, `--verbose` |
+| Hold **Right Ctrl** (PC) / **Right Option** (Mac), speak, release | type the cleaned text where your cursor is |
+| Double-tap the hotkey … tap again | talk hands-free |
+| **Esc** while talking | cancel |
+| Hold **Shift** while releasing | skip the AI cleanup once |
+| Say "new line", "new paragraph" or "scratch that" | line breaks / delete the last sentence |
+| Tray / menu-bar icon | status (white = ready, red = listening, amber = working, grey = can't reach the PC), language (English, Spanish, French), settings, quit |
 
-## While you speak
+The AI cleanup removes fillers ("um", "like"), applies your corrections ("Tuesday, no wait,
+Wednesday" → "Wednesday"), and fixes punctuation. It writes numbers, times, money, emails and URLs
+properly ("five thirty pm" → "5:30 PM"), turns "snake case user id" into `user_id`, writes math with
+symbols, and spells product and company names correctly. It never answers or acts on what you
+dictate. If its output looks wrong, the plain transcript is used instead.
 
-- **Live preview.** A small overlay at the bottom of the screen shows what you're saying as you say it.
-  Settled words are bright; the still-changing end is dimmed. It never takes keyboard focus and clicks
-  pass through it. After you release it shows "Cleaning…", then the inserted text, then fades out.
-  You can turn it off, move it to the top, or resize it in `[preview]`.
-- **Streaming.** dictate cuts your speech at natural pauses (`segment_pause_ms`) and transcribes each
-  finished phrase while you keep talking. On release, only the last phrase is left to transcribe.
-- **Incremental cleanup.** Finished sentences are cleaned while you keep talking. A sentence is
-  cleaned early only when it's safe to: never when the next phrase starts with a correction ("No wait,
-  Wednesday"), continues the sentence ("…and then"), or is part of a list ("First… Second…"). Long
-  dictations then only wait for the last sentence or two.
-- **Skipping the model.** Text that is already clean and has no numbers, symbols, fillers or
-  corrections is formatted by rules alone (`skip_when_clean`), which saves 100–700 ms.
+To teach it names and jargon, add them to `vocabulary` in the PC's `[server]` settings
+(`uv run dictate config --edit` on the PC), for example `vocabulary = ["Okonkwo", "pgvector"]`.
+Restart `dictate pc` to apply.
 
-## What the AI cleanup does
+## Speed
 
-A small local model (Gemma-4-E2B, 4-bit, via llama.cpp on your GPU) edits the transcript. It never
-answers or acts on what you said:
+Measured on the PC (RTX 4060), from releasing the key to the text arriving:
 
-- It removes fillers (um, uh, like, you know), stutters and false starts.
-- It applies self-corrections: "Tuesday, no wait, Wednesday" becomes "Wednesday".
-- It fixes punctuation and capitalization, and turns spoken "first… second… third…" into numbered lists.
-- It writes numbers, times, dates, money, percentages, units, versions and phone numbers as digits
-  and symbols ("five thirty pm" becomes "5:30 PM", "twelve percent" becomes "12%").
-- It writes emails, URLs, handles and file names normally ("john dot smith at example dot com"
-  becomes "john.smith@example.com").
-- It writes dictated math with symbols ("three times four is twelve" becomes "3 × 4 = 12").
-  Set `math_style = "ascii"` to get `x^2` and `<=` instead.
-- It spells software, products, companies and people correctly. A built-in list fixes the casing of
-  well-known names such as GitHub, PostgreSQL, iPhone, Next.js and pgvector.
+| What you said | Time |
+|---|---|
+| short sentence (2 s) | ~50 ms |
+| sentence with numbers to format (4 s) | ~450 ms |
+| paragraph (24 s) | ~400 ms |
+| long dictation (1 min, several paragraphs) | ~65 ms (cleaned while you were still talking) |
 
-Guardrails check every output. If the model answers a question, follows a dictated instruction, invents
-words, drops your request, or takes longer than `timeout_ms`, dictate inserts the rule-formatted
-transcript instead. Use `dictate models` to list the cleanup models and `dictate bench cleanup` to compare them.
-
-Other commands: `dictate lang es` / `fr` / `en` (switch language; takes effect on the next
-utterance), `dictate devices` (choose a mic), `dictate config --edit` (all settings, with comments).
-
-The settings file lives at `%APPDATA%\dictate\config.toml`. Formatting, replacements, commands,
-vocabulary and insert settings reload without a restart.
+Your voice streams to the PC while you speak, so from the Mac or iPhone you add roughly one network
+round trip: +5–20 ms at home, +30–80 ms elsewhere.
 
 ## Privacy
 
-- After `setup`, the app refuses every network connection that isn't to localhost (a Python-level
-  guard, enforced by a test that runs the real models with the network blocked). Acceptance check:
-  turn Wi-Fi off, and dictation still works.
-- Audio is never saved or logged. Transcripts are logged only if you set `log_transcripts = true`.
-- Pasted text is flagged so Windows clipboard history (Win+V) and cloud clipboard skip it, and your
-  previous clipboard (text, images, rich text) is restored afterwards.
+- Audio and text only travel between your own devices. Tailscale encrypts the connection end to end.
+- The server listens on the PC itself only (`127.0.0.1`), so nothing on your Wi-Fi can reach it.
+  Tailscale forwards your devices to it, and every connection must present the token.
+- The PC never connects to the internet after `dictate setup`. A built-in guard blocks it, and the
+  client can only connect to your PC.
+- Nothing is saved: no audio, no history. Your previous clipboard is restored after each paste.
 
-## Benchmark clips (your voice)
+## Troubleshooting
 
-- Guided recording of 36 short prompts (28 en, 4 es, 4 fr), about 10 minutes. Run it again to
-  continue where you left off: `uv run dictate bench record`
-- Record only some of them: `uv run dictate bench record --only es fr`
-- Measure WER and latency per variant (writes `bench/reports/*.md`): `uv run dictate bench asr`
-- Compare cleanup models on 97 test cases (`bench/cleanup/cases.jsonl`) and on your clips end to end:
-  `uv run dictate bench cleanup`. This also checks incremental against single-pass cleanup on
-  multi-sentence dictations (`bench/cleanup/segmented.jsonl`).
-- Release-to-text latency per stage, with the live preview on vs off and streaming on vs off:
-  `uv run dictate bench e2e`
-- Live preview quality: lag, flicker, and streamed vs whole-utterance accuracy: `uv run dictate bench streaming`
-
-Benchmarks need the GPU to themselves. Close other GPU work first (games, or ML jobs in WSL/Docker,
-which show up as `vmwp.exe` in Task Manager).
-
-Clips are saved to `bench/asr/clips/` and are git-ignored, so they stay on this machine.
-
-## Measured (RTX 4060 + Ryzen 7 7700X)
-
-### Cleanup models (`dictate bench cleanup`, 97 cases)
-
-| model | exact | assistant behaviour (before guardrails) | leaked into output | cleanup p50 | VRAM |
-|---|---|---|---|---|---|
-| **Gemma-4-E2B QAT (default)** | **96%** | 2% | **0** | **156 ms** | 1.5 GB |
-| Qwen3.5-4B | 81% | 1% | 0 | 393 ms | 3.0 GB |
-| Qwen3.5-2B | 73% | 1% | 0 | 200 ms | 1.4 GB |
-
-On your recorded English number clips, cleanup takes the word error rate from 29% to 0% ("five thirty pm"
-becomes "5:30 PM"). Gemma's prompt prefix is fully cached: 20 new prompt tokens per call. Qwen3.5's hybrid
-architecture re-processes about 500 tokens per call.
-
-### Release to text, full pipeline (M3, `dictate bench e2e`)
-
-Release to inserted text, with the live preview on and AI cleanup on. Your clips are replayed in real
-time; pasting adds about 11 ms.
-
-| utterance | M3 (streaming + incremental cleanup + n-gram drafting) | M2 (one pass at release) |
-|---|---|---|
-| 2.4 s | **124 ms** | 261 ms |
-| 8 s | **246 ms** | 437 ms (7 s) |
-| 17.8 s, no pauses | **416 ms** | — |
-| 24 s | **351 ms** | 1,050 ms |
-| 59 s, multi-paragraph | **64 ms** | 1,254 ms (same code, streaming off) |
-
-Where the time went:
-
-- Speech recognition at release is near zero, because finished phrases are transcribed while you
-  speak. Only speech with no pauses at all (the 17.8 s clip) leaves work for release, about 160 ms.
-- Cleanup: n-gram speculative decoding (`[llm] speculative = "ngram"`) drafts tokens by copying from
-  the transcript. That makes cleanup about 3× faster (468 → 154 ms median on long transcripts), with
-  the same accuracy on the test sets.
-- Incremental cleanup: on the 59 s dictation, 4 of 5 chunks were cleaned before release, and the last
-  one only needed rules.
-- The live preview adds no measurable time at release.
-
-### Live preview (`dictate bench streaming`)
-
-| metric | result | target |
-|---|---|---|
-| word spoken → shown, median / 90th percentile | 0.09 s / 0.51 s | < 1 s |
-| settled words later revised (flicker) | 0.3% (1 of 370) | ~0 |
-| word error rate, streamed vs whole-recording | 3.1% vs 7.2% | streamed close to whole |
-
-Cutting at pauses is *more* accurate than transcribing a long recording in one go, because Parakeet
-degrades on long audio.
-
-Benchmarks only mean something when the GPU is otherwise idle. `bench e2e` waits for a quiet GPU before
-each run and flags any run it couldn't get one for. A GPU job in WSL made earlier runs 10–40× slower;
-dictate is equally slow in daily use while such a job runs.
-
-### Speech recognition only (raw mode, M1)
-
-Release-to-text latency (finalize, VAD, ASR and formatting; pasting adds ~11 ms):
-
-| ASR config | 3 s utterance | 15 s utterance | VRAM |
-|---|---|---|---|
-| Parakeet v3 fp32, CUDA (default) | 119 ms | 271 ms | ~3.1 GB |
-| Parakeet v3 int8, CPU | 138 ms | 427 ms | 0 |
-
-Notes:
-- 62 ms of each number is the deliberate release tail (`audio.release_tail_ms`), which catches your last syllable.
-- On CUDA, cuDNN `HEURISTIC` conv search is essential: the default falls back to a path that is about 12× slower.
-- The GPU drops to a low-power state after about 1 s idle. Keep-warm (`asr.keep_warm`) holds it up while you speak.
-- The 15 s case still misses the 250 ms raw target. M3 fixes this by transcribing finished segments while you're still talking.
+- **The icon is grey (can't reach the PC):** check the PC is on and running `dictate pc`, Tailscale is
+  connected on both devices, and the `server`/`token` in the Mac settings match what the PC printed.
+- **Nothing happens on the Mac:** allow Terminal (or whatever app runs dictate) under Accessibility,
+  Input Monitoring and Microphone, then restart dictate.
+- **Wrong microphone:** run `uv run dictate devices`, then set `input_device` in `[client]`.
+- **Slow on the PC:** another program is using the GPU (a game, or an ML job in WSL/Docker).
 
 ## Development
 
-- Tests (unit tests plus one integration test that loads the real models offline): `uv run pytest`
-- Lint: `uv run ruff check src tests`
-- Pipeline timings on a 16 kHz WAV: `uv run dictate transcribe some.wav`
-
-Windows notes: apps running as administrator reject keystrokes from a normal process. In that case
-the text is left on your clipboard (press Ctrl+V), or run dictate as administrator.
+`uv run pytest` runs the tests. Benchmarks are on the PC: `uv run dictate bench asr` and
+`uv run dictate bench cleanup` (record test clips with `dictate bench record`). The design notes are
+in [local-dictation-build-prompt.md](local-dictation-build-prompt.md).

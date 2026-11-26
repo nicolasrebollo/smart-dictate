@@ -3,7 +3,7 @@
 Used for raw mode, as the guardrail fallback, and for utterances that skip the LLM.
 Split in two so the LLM path can reuse it:
   pre_format:  voice commands, filler removal, repeated-word collapse
-  post_format: spacing/punctuation tidy, capitalization, final period, replacements
+  post_format: spacing/punctuation tidy, capitalization, final period, known-term casing
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ from dataclasses import dataclass, field
 
 from dictate.cleanup.commands import apply_commands
 from dictate.cleanup.identifiers import apply_identifiers
-from dictate.cleanup.replacements import apply_replacements
 from dictate.cleanup.terms import apply_terms
-from dictate.config import Config, Replacement
+from dictate.cleanup.vocab import apply_vocabulary
+from dictate.config import Config
 
 # Conservative on purpose: only sounds that are never real words. "like", "you know", "este",
 # "bueno", "genre", "ben"... are left to the LLM, which can tell filler from meaning.
@@ -48,9 +48,9 @@ class FormatOptions:
     final_period: bool = True
     commands_enabled: bool = True
     phrases: dict[str, list[str]] = field(default_factory=dict)
-    replacements: list[Replacement] = field(default_factory=list)
     builtin_terms: bool = True
     spoken_identifiers: bool = True
+    vocabulary: list[str] = field(default_factory=list)
 
     @classmethod
     def from_config(cls, cfg: Config) -> FormatOptions:
@@ -62,9 +62,9 @@ class FormatOptions:
             final_period=cfg.formatter.final_period,
             commands_enabled=cfg.commands.enabled,
             phrases=cfg.commands.phrases.get(lang, {}),
-            replacements=cfg.replacements,
             builtin_terms=cfg.cleanup.builtin_terms,
             spoken_identifiers=cfg.formatter.spoken_identifiers,
+            vocabulary=cfg.vocabulary.words,
         )
 
 
@@ -161,6 +161,8 @@ def pre_format(text: str, opts: FormatOptions) -> FormatResult:
         text, scratch_previous = res.text, res.scratch_previous
     if opts.spoken_identifiers:
         text = apply_identifiers(text)
+    if opts.vocabulary:
+        text = apply_vocabulary(text, opts.vocabulary)
     if opts.remove_fillers:
         text = remove_fillers(text, opts.language)
     if opts.collapse_repeats:
@@ -180,7 +182,7 @@ def post_format(text: str, opts: FormatOptions) -> str:
 
 def post_format_llm(text: str, opts: FormatOptions) -> str:
     """After a successful LLM pass: the model already handled casing and punctuation, so only
-    tidy whitespace and apply known-term casing + the user's replacements."""
+    tidy whitespace and apply known-term casing."""
     return _finish(_capitalize_after_newlines(tidy_spacing(text, opts.language)), opts)
 
 
@@ -204,8 +206,6 @@ def _finish(text: str, opts: FormatOptions) -> str:
     text = _EMAIL.sub(lambda m: m.group(0).lower(), text)  # "John.Smith@Example.com" -> lowercase
     if opts.builtin_terms:
         text = apply_terms(text)
-    if opts.replacements:
-        text = apply_replacements(text, opts.replacements)
     return text
 
 

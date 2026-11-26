@@ -79,3 +79,27 @@ def test_full_pipeline_runs_with_network_blocked(guard) -> None:
     audio = (np.random.default_rng(0).standard_normal(SAMPLE_RATE * 2) * 0.001).astype(np.float32)
     res = Pipeline(cfg, asr).process(audio, vad_probs_offline(vad, audio))
     assert res.no_speech  # silence in, nothing out - and no network touched
+
+
+def test_allowed_host_and_its_addresses_pass(monkeypatch) -> None:
+    calls = []
+
+    def fake_getaddrinfo(host, *a, **k):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("100.64.1.2", 443))]
+
+    # pytest puts the real socket functions back afterwards, whatever uninstall restores
+    monkeypatch.setattr(socket, "getaddrinfo", socket.getaddrinfo)
+    monkeypatch.setattr(socket.socket, "connect", socket.socket.connect)
+    monkeypatch.setattr(offline, "_original_getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(offline, "_original_connect", lambda self, addr: calls.append(addr))
+    offline.install_network_guard(allow_hosts=["my-pc.tail1234.ts.net"])
+    try:
+        assert socket.getaddrinfo("my-pc.tail1234.ts.net", 443)[0][4][0] == "100.64.1.2"
+        s = socket.socket()
+        s.connect(("100.64.1.2", 443))  # resolved from the allowed name: OK
+        s.close()
+        assert calls == [("100.64.1.2", 443)]
+        with pytest.raises(offline.NetworkBlockedError):
+            socket.getaddrinfo("example.com", 443)
+    finally:
+        offline.uninstall_network_guard()

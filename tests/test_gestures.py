@@ -95,9 +95,22 @@ def test_key_repeat_ignored(g: GestureRecognizer) -> None:
 
 
 def test_parse_key() -> None:
-    assert parse_key("ctrl_r") == {0xA3}
-    assert parse_key("shift") == {0xA0, 0xA1, 0x10}
-    assert parse_key("vk:0x7C") == {0x7C}
-    assert parse_key("F13") == {0x7C}
+    assert parse_key("ctrl_r") == {"ctrl_r"}
+    assert parse_key("alt_r") == {"alt_r", "alt_gr"}
+    assert parse_key("shift") == {"shift", "shift_l", "shift_r"}
+    assert parse_key("F13") == {"f13"}
+    assert parse_key("x") == {"char:x"}
     with pytest.raises(ValueError):
         parse_key("hyper")
+
+
+def test_listener_maps_events_to_gestures() -> None:
+    from dictate.hotkeys import HotkeyListener
+
+    seen = []
+    listener = HotkeyListener(GestureRecognizer(), seen.append, ptt="ctrl_r", cancel="esc", raw_modifier="shift")
+    assert [e.action for e in listener._handle("down", "ctrl_r", 0.0)] == [Action.START]
+    assert listener._handle("down", "ctrl_r", 0.05) == []  # auto-repeat
+    listener._handle("down", "shift_l", 0.5)
+    out = listener._handle("up", "ctrl_r", 1.0)
+    assert [e.action for e in out] == [Action.STOP] and out[0].raw is True

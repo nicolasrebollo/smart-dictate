@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Dictate</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Dictate">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#18181b">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root {
+    --bg: #fafafa; --fg: #18181b; --muted: #71717a; --card: #ffffff; --line: #e4e4e7;
+    --accent: #18181b; --accent-fg: #fafafa; --rec: #dc2626; --ok: #16a34a; --warn: #d97706;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #18181b; --fg: #f4f4f5; --muted: #a1a1aa; --card: #27272a; --line: #3f3f46;
+            --accent: #f4f4f5; --accent-fg: #18181b; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+               font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { min-height: 100%; display: flex; flex-direction: column; gap: 16px; max-width: 560px; margin: 0 auto;
+         padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 24px); }
+  header { display: flex; align-items: center; justify-content: space-between; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--ok); } .dot.busy { background: var(--warn); } .dot.rec { background: var(--rec); }
+  select { font: inherit; font-size: 14px; color: var(--fg); background: var(--card); border: 1px solid var(--line);
+           border-radius: 8px; padding: 6px 8px; }
+  .result { flex: 1; min-height: 160px; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+            padding: 14px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 17px; }
+  .result.empty { color: var(--muted); }
+  .actions { display: flex; gap: 10px; }
+  .actions button { flex: 1; font: inherit; font-weight: 600; padding: 12px; border-radius: 12px; cursor: pointer;
+                    color: var(--fg); background: var(--card); border: 1px solid var(--line); }
+  .actions button:disabled { opacity: .4; cursor: default; }
+  .talk-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 8px; }
+  #talk { width: 132px; height: 132px; border-radius: 50%; border: none; cursor: pointer;
+          background: var(--accent); color: var(--accent-fg); display: grid; place-items: center;
+          touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+          transition: transform .12s ease, background .12s ease; }
+  #talk svg { width: 44px; height: 44px; }
+  #talk.rec { background: var(--rec); color: #fff; transform: scale(1.06); }
+  #talk.busy { opacity: .7; }
+  .hint { color: var(--muted); font-size: 14px; text-align: center; min-height: 1.45em; }
+  #cancel { font: inherit; font-size: 14px; color: var(--muted); background: none; border: none; padding: 6px 10px;
+            visibility: hidden; cursor: pointer; }
+  #cancel.show { visibility: visible; }
+  .setup { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .setup code { font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Dictate</h1>
+    <div style="display:flex; gap:10px; align-items:center">
+      <span class="status"><span class="dot" id="dot"></span><span id="status">Connecting…</span></span>
+      <select id="lang" aria-label="Language">
+        <option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="setup" id="setup" hidden>
+    <strong>One-time setup.</strong> Open the link that <code>dictate server</code> prints on your PC
+    (it ends with <code>#t=…</code>). Then use Share → <em>Add to Home Screen</em>.
+  </div>
+
+  <div class="result empty" id="result">Your text appears here and is copied automatically.</div>
+  <div class="actions">
+    <button id="copy" disabled>Copy</button>
+    <button id="share" disabled>Share</button>
+  </div>
+
+  <div class="talk-wrap">
+    <button id="talk" aria-label="Hold to talk">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+           stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/>
+        <path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+    </button>
+    <div class="hint" id="hint">Hold to talk, or tap to start and tap to stop</div>
+    <button id="cancel">Cancel</button>
+  </div>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+                set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+
+// Token: arrives once in the URL (#t=...), then lives in this browser only.
+// The URL keeps it (the #fragment is never sent over the network) so "Add to Home Screen" carries it:
+// a Home Screen app has its own storage, separate from Safari's.
+const hashToken = new URLSearchParams(location.hash.slice(1)).get("t");
+if (hashToken) store.set("dictate-token", hashToken);
+const token = hashToken || store.get("dictate-token") || "";
+if (token) {
+  if (!hashToken) history.replaceState(null, "", "/#t=" + encodeURIComponent(token));
+  document.querySelector('link[rel="manifest"]').href = "/manifest.webmanifest?t=" + encodeURIComponent(token);
+} else {
+  $("setup").hidden = false;
+}
+
+const lang = $("lang");
+lang.value = store.get("dictate-lang") || "en";
+lang.onchange = () => store.set("dictate-lang", lang.value);
+
+// --- connection -------------------------------------------------------------------------------
+let ws = null, wsReady = null, pendingResult = null, retry = 500;
+function setStatus(text, cls) { $("status").textContent = text; $("dot").className = "dot " + (cls || ""); }
+function connect() {
+  if (!token) { setStatus("Not set up"); return Promise.reject(new Error("no token")); }
+  if (ws && ws.readyState <= 1) return wsReady;
+  const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws?token=" + encodeURIComponent(token);
+  ws = new WebSocket(url);
+  ws.binaryType = "arraybuffer";
+  wsReady = new Promise((resolve, reject) => {
+    ws.onopen = () => { retry = 500; setStatus("Ready", "on"); resolve(); };
+    ws.onerror = () => reject(new Error("connection failed"));
+  });
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if ((m.type === "result" || m.type === "error") && pendingResult) { pendingResult(m); pendingResult = null; }
+  };
+  ws.onclose = () => {
+    setStatus("Offline: is the PC on?");
+    if (pendingResult) { pendingResult({ type: "error", message: "connection lost" }); pendingResult = null; }
+    if (document.visibilityState === "visible") setTimeout(connect, retry = Math.min(retry * 2, 8000));
+  };
+  return wsReady;
+}
+
+// --- microphone: 16 kHz mono PCM16, streamed while you speak -------------------------------------
+const RATE = 16000, PREROLL = RATE * 0.3, CHUNK = 640; // 300 ms pre-roll, 40 ms packets
+let audio = null, recording = false, preroll = [], outbuf = [];
+const workletSrc = `class Cap extends AudioWorkletProcessor {
+  process(inputs) { const ch = inputs[0] && inputs[0][0]; if (ch) this.port.postMessage(ch.slice(0)); return true; } }
+  registerProcessor("cap", Cap);`;
+
+async function openMic() {
+  if (audio) { if (audio.ctx.state !== "running") await audio.ctx.resume(); return; }
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const url = URL.createObjectURL(new Blob([workletSrc], { type: "application/javascript" }));
+  await ctx.audioWorklet.addModule(url);
+  const src = ctx.createMediaStreamSource(stream);
+  const node = new AudioWorkletNode(ctx, "cap");
+  const sink = ctx.createGain(); sink.gain.value = 0;
+  src.connect(node); node.connect(sink); sink.connect(ctx.destination);
+  const step = ctx.sampleRate / RATE; let pos = 0, acc = 0, n = 0;
+  node.port.onmessage = (ev) => {  // box-filter resample to 16 kHz, convert to int16
+    const x = ev.data, out = [];
+    for (let i = 0; i < x.length; i++) {
+      acc += x[i]; n++; pos += 1;
+      if (pos >= step) { pos -= step; const v = Math.max(-1, Math.min(1, acc / n)); out.push(v < 0 ? v * 32768 : v * 32767); acc = 0; n = 0; }
+    }
+    if (recording) { outbuf.push(...out); flush(false); }
+    else { preroll.push(...out); if (preroll.length > PREROLL) preroll.splice(0, preroll.length - PREROLL); }
+  };
+  audio = { ctx, stream };
+}
+function closeMic() {
+  if (!audio) return;
+  audio.stream.getTracks().forEach((t) => t.stop());
+  audio.ctx.close(); audio = null; preroll = [];
+}
+function flush(all) {
+  while (outbuf.length >= CHUNK || (all && outbuf.length)) {
+    const part = outbuf.splice(0, CHUNK);
+    if (ws && ws.readyState === 1) ws.send(Int16Array.from(part).buffer);
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") { if (recording) cancel(); closeMic(); }  // release the mic
+  else connect().catch(() => {});
+});
+
+// --- talk button: hold to talk, or tap to toggle --------------------------------------------------
+const talk = $("talk"), hint = $("hint");
+let downAt = 0, toggled = false, busy = false, pressing = false;
+
+async function start() {
+  if (busy) return;
+  try { await openMic(); } catch (e) { hint.textContent = "Microphone blocked: allow it in Settings › Safari"; return; }
+  recording = true; outbuf = preroll.splice(0); talk.className = "rec";
+  $("cancel").classList.add("show"); setStatus("Listening", "rec"); hint.textContent = "Listening…";
+  try { await connect(); } catch { stopUi(); hint.textContent = "Can't reach your PC"; recording = false; return; }
+  ws.send(JSON.stringify({ type: "start", language: lang.value }));
+  flush(false);
+  // Released before the mic was ready (e.g. during the permission prompt): switch to tap-to-stop.
+  if (!pressing && !toggled) { toggled = true; hint.textContent = "Listening… tap to stop"; }
+}
+
+function stop() {  // runs inside the tap/release gesture, so the clipboard write is allowed
+  if (!recording) return;
+  busy = true; talk.className = "busy"; $("cancel").classList.remove("show");
+  setStatus("Working…", "busy"); hint.textContent = "Cleaning up…";
+  const result = new Promise((resolve) => {
+    setTimeout(() => {  // keep 60 ms of tail so the last syllable isn't cut
+      recording = false; flush(true);
+      pendingResult = resolve;
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "stop", raw: false }));
+      else resolve({ type: "error", message: "not connected" });
+    }, 60);
+  });
+  const text = result.then((m) => (m.type === "result" ? m.text : ""));
+  if (navigator.clipboard && window.ClipboardItem) {
+    const blob = text.then((t) => { if (!t) throw new Error("empty"); return new Blob([t], { type: "text/plain" }); });
+    navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })])
+      .then(() => { hint.textContent = "Copied: paste it anywhere"; }).catch(() => {});
+  }
+  result.then((m) => {
+    busy = false; stopUi();
+    if (m.type !== "result") { hint.textContent = m.message || "Something went wrong"; return; }
+    if (!m.text) { hint.textContent = "Didn't catch anything"; return; }
+    show(m.text);
+    if (!hint.textContent.startsWith("Copied")) hint.textContent = "Done (" + m.ms + " ms)";
+  });
+}
+
+function cancel() {
+  if (!recording) return;
+  recording = false; outbuf = [];
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "cancel" }));
+  stopUi(); hint.textContent = "Cancelled";
+}
+function stopUi() { talk.className = ""; toggled = false; $("cancel").classList.remove("show");
+                    setStatus(ws && ws.readyState === 1 ? "Ready" : "Offline", ws && ws.readyState === 1 ? "on" : ""); }
+
+talk.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  pressing = true;
+  if (toggled) return;  // the second tap stops on release
+  downAt = performance.now(); start();
+});
+talk.addEventListener("pointerup", (e) => {
+  e.preventDefault();
+  pressing = false;
+  if (!recording) return;
+  if (!toggled && performance.now() - downAt < 350) { toggled = true; hint.textContent = "Listening… tap to stop"; return; }
+  stop();
+});
+talk.addEventListener("pointercancel", () => { pressing = false; if (!toggled) cancel(); });
+talk.addEventListener("contextmenu", (e) => e.preventDefault());
+$("cancel").onclick = cancel;
+
+// --- result -------------------------------------------------------------------------------------
+function show(text) {
+  const r = $("result"); r.textContent = text; r.classList.remove("empty");
+  $("copy").disabled = false; $("share").disabled = !navigator.share;
+}
+$("copy").onclick = () => navigator.clipboard.writeText($("result").textContent)
+  .then(() => { hint.textContent = "Copied"; }).catch(() => { hint.textContent = "Copy failed"; });
+$("share").onclick = () => navigator.share && navigator.share({ text: $("result").textContent }).catch(() => {});
+
+connect().catch(() => {});
+</script>
+</body>
+</html>

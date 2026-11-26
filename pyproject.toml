@@ -1,17 +1,28 @@
 [project]
 name = "dictate"
 version = "0.1.0"
-description = "Local, private push-to-talk dictation: speech -> clean text at your cursor. No cloud."
+description = "Push-to-talk dictation with AI cleanup. Models run on your own PC; your Mac, PC and iPhone are light clients."
 requires-python = ">=3.12"
+# The client (Mac / PC): hotkey, microphone, paste. A few MB, no models.
 dependencies = [
-    "onnx-asr[gpu,hub]>=0.12",
-    "onnxruntime-gpu[cuda,cudnn]>=1.27",
-    "numpy>=2",
     "sounddevice>=0.5",
-    "soundfile>=0.13",
-    "pynput>=1.8",
+    "pynput>=1.8; sys_platform == 'win32'",
+    "pyobjc-framework-Quartz>=10; sys_platform == 'darwin'",
+    "pyobjc-framework-ApplicationServices>=10; sys_platform == 'darwin'",
     "platformdirs>=4",
-    "pyside6-essentials>=6.8",
+    "websockets>=15",
+    "pystray>=0.19",
+    "pillow>=11",
+]
+
+[project.optional-dependencies]
+# The server (the PC with the GPU): speech recognition + AI cleanup.
+server = [
+    "numpy>=2",
+    "onnx-asr[gpu,hub]>=0.12; sys_platform == 'win32' or sys_platform == 'linux'",
+    "onnxruntime-gpu[cuda,cudnn]>=1.27; sys_platform == 'win32' or sys_platform == 'linux'",
+    "soundfile>=0.13",
+    "rapidfuzz>=3",
 ]
 
 [project.scripts]

@@ -14,8 +14,8 @@ import numpy as np
 import sounddevice as sd
 import soundfile as sf
 
-from dictate.audio import level_report, resolve_device
 from dictate.bench import CLIPS_DIR, load_prompts
+from dictate.mic import level_warning, resolve_device
 from dictate.vad import SAMPLE_RATE
 
 
@@ -78,11 +78,10 @@ def record_session(*, only: list[str] | None = None, redo: bool = False, device:
             if cmd == "s":
                 break
             audio = cap.record_until_enter()
-            lv = level_report(audio)
             dur = len(audio) / SAMPLE_RATE
-            peak_db = 20 * np.log10(max(lv.peak, 1e-9))
-            print(f"  {dur:.1f}s, peak {peak_db:.0f} dBFS, level {lv.rms_dbfs:.0f} dBFS")
-            if warning := lv.warning():
+            peak_db = 20 * np.log10(max(float(np.max(np.abs(audio))) if len(audio) else 0.0, 1e-9))
+            print(f"  {dur:.1f}s, peak {peak_db:.0f} dBFS")
+            if warning := level_warning(audio):
                 print(f"  ! {warning}")
             if dur < 0.5:
                 print("  ! too short - try again")

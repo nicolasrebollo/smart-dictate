@@ -86,10 +86,10 @@ def test_pad_to_bucket() -> None:
 
 
 def test_level_warnings() -> None:
-    from dictate.audio import level_report
+    from dictate.mic import level_warning
 
     quiet_room = (np.random.default_rng(0).standard_normal(16000) * 0.0005).astype(np.float32)  # ~ -66 dBFS
-    assert level_report(quiet_room).warning() is None
-    assert "silent" in (level_report(np.zeros(16000, np.float32)).warning() or "")
-    clipped = np.ones(16000, np.float32)
-    assert "clipping" in (level_report(clipped).warning() or "")
+    assert level_warning(quiet_room) is None
+    assert level_warning((quiet_room * 32767).astype("<i2").tobytes()) is None  # PCM16 bytes, as the client has
+    assert "silent" in (level_warning(bytes(32000)) or "")
+    assert "clipping" in (level_warning(np.ones(16000, np.float32)) or "")

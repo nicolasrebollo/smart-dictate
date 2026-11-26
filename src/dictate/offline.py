@@ -57,16 +57,18 @@ _installed = False
 
 
 def install_network_guard(allow_hosts: Iterable[str] = ()) -> None:
-    """Refuse every outbound connection that is not to loopback (or an explicitly allowed host)."""
+    """Refuse every outbound connection that is not to loopback or to an explicitly allowed host
+    (the client allows only your PC). Addresses that an allowed name resolves to are allowed too."""
     global _installed
     allowed = frozenset(h.lower() for h in allow_hosts)
+    resolved: set[str] = set()
 
     def _check(sock: socket.socket, address: Any) -> None:
         if sock.family not in (socket.AF_INET, socket.AF_INET6):
             return  # AF_UNIX etc. are local by definition
         host = address[0] if isinstance(address, tuple) else address
-        if not _is_loopback_host(host, allowed):
-            raise NetworkBlockedError(f"dictate is offline: refused connection to {host!r}")
+        if not _is_loopback_host(host, allowed) and str(host).lower() not in resolved:
+            raise NetworkBlockedError(f"dictate: refused connection to {host!r} (not your server)")
 
     def guarded_connect(self: socket.socket, address: Any) -> None:
         _check(self, address)
@@ -78,8 +80,11 @@ def install_network_guard(allow_hosts: Iterable[str] = ()) -> None:
 
     def guarded_getaddrinfo(host: Any, *args: Any, **kwargs: Any) -> Any:
         if host is not None and not _is_loopback_host(host, allowed):
-            raise NetworkBlockedError(f"dictate is offline: refused DNS lookup of {host!r}")
-        return _original_getaddrinfo(host, *args, **kwargs)
+            raise NetworkBlockedError(f"dictate: refused DNS lookup of {host!r} (not your server)")
+        result = _original_getaddrinfo(host, *args, **kwargs)
+        if host is not None and not _is_loopback_host(host, frozenset()):
+            resolved.update(str(info[4][0]).lower() for info in result)
+        return result
 
     socket.socket.connect = guarded_connect  # type: ignore[method-assign]
     socket.socket.connect_ex = guarded_connect_ex  # type: ignore[method-assign]

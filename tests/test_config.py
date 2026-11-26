@@ -1,43 +1,47 @@
+import re
+
 import pytest
 
-from dictate.config import DEFAULT_CONFIG_TOML, ConfigError, ConfigWatcher, load_config, parse_config
+from dictate.config import (
+    ConfigError,
+    default_config_text,
+    ensure_server_token,
+    load_config,
+    parse_config,
+    set_value,
+)
 
 
 def test_default_config_parses() -> None:
-    cfg = parse_config(DEFAULT_CONFIG_TOML)
-    assert cfg.hotkeys.push_to_talk == "ctrl_r"
-    assert cfg.asr.language == "en"
+    cfg = parse_config(default_config_text())
+    assert cfg.client.server == "ws://127.0.0.1:8765"
+    assert cfg.client.language == "en"
+    assert cfg.server.port == 8765 and cfg.server.cleanup
+    assert cfg.cleanup.model == "gemma-4-e2b"
     assert cfg.commands.phrases["fr"]["new_line"] == ["nouvelle ligne", "à la ligne"]
-    assert cfg.replacements == []
 
 
-def test_empty_file_gives_defaults() -> None:
-    cfg = parse_config("")
-    assert cfg.audio.preroll_ms == 300
-    assert "en" in cfg.commands.phrases
+def test_short_server_keys_drive_the_engine() -> None:
+    cfg = parse_config('[client]\nlanguage = "es"\n[server]\ncleanup = false\nvocabulary = ["Okonkwo"]\n')
+    assert cfg.cleanup.enabled is False
+    assert cfg.vocabulary.words == ["Okonkwo"]
+    assert cfg.asr.language == "es"
 
 
-def test_replacements_simple_and_table() -> None:
-    cfg = parse_config('[replacements]\n"jason" = "JSON"\n"x" = { to = "Y", case_sensitive = true }\n')
-    assert [(r.source, r.to, r.case_sensitive) for r in cfg.replacements] == [
-        ("jason", "JSON", False),
-        ("x", "Y", True),
-    ]
-
-
-def test_input_device_index() -> None:
-    assert parse_config("[audio]\ninput_device = 3\n").audio.input_device == 3
+def test_advanced_sections_still_work() -> None:
+    cfg = parse_config('[vad]\nthreshold = 0.6\n[llm]\nspeculative = "none"\n')
+    assert cfg.vad.threshold == 0.6 and cfg.llm.speculative == "none"
 
 
 @pytest.mark.parametrize(
     "bad",
     [
-        '[asr]\nlanguage = "de"\n',
+        '[client]\nlanguage = "de"\n',
+        '[client]\nserver = "http://pc:8765"\n',
+        '[client]\nhotkey = "esc"\n',
+        "[server]\nport = 0\n",
+        '[server]\nvocabulary = "Okonkwo"\n',
         '[asr]\ndevice = "tpu"\n',
-        '[audio]\npreroll_ms = "long"\n',
-        "[feedback]\nvolume = 2.0\n",
-        '[hotkeys]\npush_to_talk = "esc"\n',
-        '[replacements]\n"a" = 3\n',
         "not toml at all [",
     ],
 )
@@ -47,37 +51,38 @@ def test_invalid_config_rejected(bad: str) -> None:
 
 
 def test_unknown_keys_warn_but_load(caplog: pytest.LogCaptureFixture) -> None:
-    cfg = parse_config("[audio]\nbogus = 1\n[nope]\nx = 1\n")
-    assert cfg.audio.preroll_ms == 300
-    assert "bogus" in caplog.text and "nope" in caplog.text
+    cfg = parse_config("[client]\nbogus = 1\n[history]\nenabled = true\n")
+    assert cfg.client.hotkey == "ctrl_r"
+    assert "bogus" in caplog.text and "history" in caplog.text
 
 
-def test_first_run_creates_file_and_hot_reload(tmp_path) -> None:
+def test_first_run_creates_file_and_old_format_is_moved_aside(tmp_path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text('[hotkeys]\npush_to_talk = "ctrl_r"\n', encoding="utf-8")  # pre-M5 format
+    cfg = load_config(path)
+    assert (tmp_path / "config.old.toml").exists()
+    assert "[client]" in path.read_text(encoding="utf-8")
+    assert cfg.client.server.startswith("ws://")
+
+
+def test_server_token_created_once_and_saved(tmp_path) -> None:
     path = tmp_path / "config.toml"
     cfg = load_config(path)
-    assert path.exists()
-    watcher = ConfigWatcher(cfg)
-    assert watcher.maybe_reload() is False
-    text = path.read_text(encoding="utf-8").replace('language = "en"', 'language = "es"')
-    text = text.replace("[replacements]", '[replacements]\n"jason" = "JSON"')
-    path.write_text(text, encoding="utf-8")
-    import os
-
-    os.utime(path, (1, 2_000_000_000))
-    assert watcher.maybe_reload() is True
-    assert cfg.asr.language == "es"
-    assert cfg.replacements[0].to == "JSON"
+    token = ensure_server_token(cfg)
+    assert len(token) > 16
+    again = load_config(path)
+    assert again.server.token == token
+    assert ensure_server_token(again) == token
+    text = path.read_text(encoding="utf-8")
+    assert "# created automatically on first start" in text  # comment kept
 
 
-def test_old_config_gets_new_sections_appended_without_touching_settings(tmp_path) -> None:
-    from dictate.config import upgrade_config_file
-
-    path = tmp_path / "config.toml"
-    path.write_text('[asr]\nlanguage = "fr"\n\n[replacements]\n"jason" = "JSON"\n', encoding="utf-8")
-    added = upgrade_config_file(path)
-    assert "cleanup" in added and "guardrails" in added and "asr" not in added
-    cfg = load_config(path)
-    assert cfg.asr.language == "fr"
-    assert cfg.replacements[0].to == "JSON"
-    assert cfg.cleanup.model == "gemma-4-e2b"
-    assert upgrade_config_file(path) == []  # idempotent
+def test_set_value_replaces_or_appends(tmp_path) -> None:
+    path = tmp_path / "c.toml"
+    path.write_text('[client]\nlanguage = "en"  # note\n\n[server]\nport = 8765\n', encoding="utf-8")
+    set_value(path, "client", "language", "fr")
+    set_value(path, "server", "token", "abc")
+    text = path.read_text(encoding="utf-8")
+    assert re.search(r'^language = "fr" +# note$', text, re.M)  # value changed, comment kept
+    cfg = parse_config(text)
+    assert cfg.client.language == "fr" and cfg.server.token == "abc"

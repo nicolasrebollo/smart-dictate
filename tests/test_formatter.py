@@ -8,11 +8,11 @@ from dictate.cleanup.formatter import (
     format_raw,
     remove_fillers,
 )
-from dictate.config import DEFAULT_CONFIG_TOML, Replacement, parse_config
+from dictate.config import parse_config
 
 
 def opts(lang: str = "en", **kw) -> FormatOptions:
-    cfg = parse_config(DEFAULT_CONFIG_TOML)
+    cfg = parse_config("")
     cfg.asr.language = lang
     o = FormatOptions.from_config(cfg)
     for k, v in kw.items():
@@ -159,7 +159,7 @@ def test_identifiers_survive() -> None:
     assert fmt(text) == text
 
 
-# -- commands + replacements wired through format_raw ----------------------------------------
+# -- commands wired through format_raw ----------------------------------------
 def test_new_paragraph_command() -> None:
     assert fmt("Hi team. New paragraph. The release is Monday.") == "Hi team.\n\nThe release is Monday."
 
@@ -191,11 +191,6 @@ def test_scratch_that_alone_flags_previous() -> None:
 def test_spanish_and_french_commands() -> None:
     assert fmt("Hola. Nuevo párrafo. Adiós.", "es") == "Hola.\n\nAdiós."
     assert fmt("Bonjour. Nouvelle ligne. Merci.", "fr") == "Bonjour.\nMerci."
-
-
-def test_replacements_applied_last() -> None:
-    o = opts(replacements=[Replacement("jason", "JSON"), Replacement("pie torch", "PyTorch")])
-    assert format_raw("open the jason file in pie torch", o).text == "Open the JSON file in PyTorch."
 
 
 def test_email_addresses_lowercased() -> None:

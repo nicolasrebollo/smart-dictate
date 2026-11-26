@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import array
 import logging
+import math
 import sys
 import wave
 from pathlib import Path
-
-import numpy as np
 
 log = logging.getLogger(__name__)
 
@@ -21,20 +21,19 @@ CUES: dict[str, list[tuple[float, float]]] = {  # (frequency Hz, duration s) seg
 }
 
 
-def _render(segments: list[tuple[float, float]], volume: float) -> np.ndarray:
-    parts = []
+def _render(segments: list[tuple[float, float]], volume: float) -> bytes:
+    """Sine segments with short fades, as 16-bit PCM."""
+    out = array.array("h")
     for freq, dur in segments:
         n = int(SR * dur)
-        t = np.arange(n) / SR
-        tone = np.sin(2 * np.pi * freq * t) if freq > 0 else np.zeros(n)
         fade = min(n // 3, int(SR * 0.012))
-        env = np.ones(n)
-        if fade:
-            env[:fade] = np.linspace(0, 1, fade)
-            env[-fade:] = np.linspace(1, 0, fade)
-        parts.append(tone * env)
-    pcm = np.concatenate(parts) * volume * 0.6
-    return (np.clip(pcm, -1, 1) * 32767).astype(np.int16)
+        for i in range(n):
+            env = min(1.0, i / fade, (n - 1 - i) / fade) if fade else 1.0
+            v = math.sin(2 * math.pi * freq * i / SR) * env * volume * 0.6 if freq > 0 else 0.0
+            out.append(int(max(-1.0, min(1.0, v)) * 32767))
+    if sys.byteorder == "big":
+        out.byteswap()
+    return out.tobytes()
 
 
 class Sounds:
@@ -50,17 +49,22 @@ class Sounds:
                     f.setnchannels(1)
                     f.setsampwidth(2)
                     f.setframerate(SR)
-                    f.writeframes(_render(segs, volume).tobytes())
+                    f.writeframes(_render(segs, volume))
             self._files[name] = path
 
     def play(self, name: str) -> None:
-        if not self.enabled or sys.platform != "win32":
+        if not self.enabled:
             return
-        import winsound
-
         try:
-            winsound.PlaySound(
-                str(self._files[name]), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT
-            )
+            if sys.platform == "win32":
+                import winsound
+
+                winsound.PlaySound(
+                    str(self._files[name]), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT
+                )
+            elif sys.platform == "darwin":
+                import subprocess
+
+                subprocess.Popen(["afplay", str(self._files[name])])
         except Exception:
             log.debug("could not play sound %s", name, exc_info=True)

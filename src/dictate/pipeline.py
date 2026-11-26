@@ -69,7 +69,7 @@ class Pipeline:
         return res
 
     def clean_text(self, asr_text: str, *, raw: bool = False, timings: Timings | None = None) -> PipelineResult:
-        """Transcript -> final text: commands/fillers -> LLM cleanup (unless raw) -> terms/replacements."""
+        """Transcript -> final text: commands/fillers -> LLM cleanup (unless raw) -> known terms."""
         t = timings or Timings()
         opts = FormatOptions.from_config(self.cfg)
         with t.stage("format"):

@@ -83,7 +83,7 @@ class ParakeetASR:
         self._warmup_max_s = warmup_max_s
 
     def transcribe(self, audio: FloatArray, *, vocabulary: Sequence[str] = ()) -> Transcript:
-        # Parakeet has no prompt/hotword biasing; vocabulary is applied by cleanup + replacements.
+        # Parakeet has no prompt/hotword biasing; vocabulary is applied by the formatter + AI cleanup.
         if len(audio) < SAMPLE_RATE // 10:
             return Transcript(text="")
         text = self._model.recognize(pad_to_bucket(audio), sample_rate=SAMPLE_RATE)

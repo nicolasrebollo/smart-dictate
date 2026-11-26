@@ -15,9 +15,10 @@ def setup_logging(debug: bool = False) -> None:
     root.handlers.clear()
     root.setLevel(logging.DEBUG if debug else logging.INFO)
 
-    console = logging.StreamHandler(sys.stdout)
-    console.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s", "%H:%M:%S"))
-    root.addHandler(console)
+    if sys.stdout is not None:  # None when started without a console (autostart via pythonw)
+        console = logging.StreamHandler(sys.stdout)
+        console.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s", "%H:%M:%S"))
+        root.addHandler(console)
 
     try:
         d = paths.log_dir()

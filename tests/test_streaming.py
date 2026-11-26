@@ -9,7 +9,7 @@ import pytest
 
 from dictate.cleanup.incremental import IncrementalCleaner, join_chunks, rules_for, safe_boundary
 from dictate.cleanup.skip import llm_reason
-from dictate.streaming import ASRWorker, Segmenter, Stabilizer, StreamConfig, StreamingSession
+from dictate.streaming import ASRWorker, Segmenter, StreamConfig, StreamingSession
 from dictate.vad import FRAME, FRAME_MS
 
 
@@ -62,26 +62,6 @@ def test_segments_partition_timeline() -> None:
     assert seg.seg_start == cuts[-1]
 
 
-# -- stabilizer -------------------------------------------------------------------------------
-def test_stable_prefix_needs_two_agreeing_hypotheses() -> None:
-    s = Stabilizer()
-    assert s.update("Hello wor") == ([], ["Hello", "wor"])
-    stable, unstable = s.update("Hello world how")
-    assert stable == ["Hello"] and unstable == ["world", "how"]
-    stable, unstable = s.update("Hello world, how are")
-    assert stable == ["Hello", "world,", "how"] and unstable == ["are"]
-
-
-def test_stable_words_never_revised() -> None:
-    s = Stabilizer()
-    s.update("I think we should")
-    s.update("I think we should go")
-    assert s.stable == ["I", "think", "we", "should"]
-    stable, unstable = s.update("I thought we should go")  # revision of an already stable word
-    assert stable == ["I", "think", "we", "should"]
-    assert unstable == []  # don't show a tail that contradicts the stable text
-
-
 # -- session with a fake ASR -------------------------------------------------------------------
 class FakeASR:
     """Returns 'w<i>' per 0.5 s of audio so we can see what was transcribed."""
@@ -100,11 +80,11 @@ class FakeASR:
         pass
 
 
-def run_session(pattern, preview=False, on_preview=None):
+def run_session(pattern, on_commit=None):
     asr = FakeASR()
     worker = ASRWorker(asr, threading.Lock())
-    cfg = StreamConfig(pause_ms=300, min_segment_s=0.5, preview=preview, preview_interval_ms=0, pad_ms=0)
-    sess = StreamingSession(worker, cfg, on_preview=on_preview)
+    cfg = StreamConfig(pause_ms=300, min_segment_s=0.5, pad_ms=0)
+    sess = StreamingSession(worker, cfg, on_commit=on_commit)
     for prob, ms in pattern:
         for _ in range(frames(ms)):
             sess.feed(np.full(FRAME, 0.1, np.float32), [prob])
@@ -112,21 +92,22 @@ def run_session(pattern, preview=False, on_preview=None):
 
 
 def test_session_commits_segments_and_finalizes_rest() -> None:
-    sess, _ = run_session([(0.9, 1000), (0.0, 600), (0.9, 1000), (0.0, 600), (0.9, 1000)])
+    commits = []
+    sess, _ = run_session(
+        [(0.9, 1000), (0.0, 600), (0.9, 1000), (0.0, 600), (0.9, 1000)], on_commit=lambda i, t: commits.append(i)
+    )
     texts = sess.finalize()
     assert len(texts) == 3 and all(texts)
-    assert sess.stats.segments == 2
+    assert sess.segments == 2 and sorted(commits) == [0, 1]
 
 
-def test_session_preview_calls_back_and_stops_after_finalize() -> None:
-    seen = []
-    sess, _ = run_session([(0.9, 1500)], preview=True, on_preview=lambda c, s, u: seen.append((c, s, u)))
-    time.sleep(0.2)
+def test_session_ignores_audio_after_finalize() -> None:
+    sess, asr = run_session([(0.9, 1500)])
     sess.finalize()
-    n = len(seen)
+    calls = asr.calls
     sess.feed(np.zeros(FRAME, np.float32), [0.9])
-    time.sleep(0.1)
-    assert n > 0 and len(seen) == n
+    time.sleep(0.05)
+    assert asr.calls == calls
 
 
 # -- skip heuristics -----------------------------------------------------------------------------

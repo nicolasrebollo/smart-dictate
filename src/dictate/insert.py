@@ -34,7 +34,7 @@ class InsertOutcome:
 
 class _Clipboard:
     def __init__(self) -> None:
-        self._hwnd = w.create_message_window()
+        self._hwnd = w.create_pumped_message_window()
         self._fmt_exclude = w.user32.RegisterClipboardFormatW("ExcludeClipboardContentFromMonitorProcessing")
         self._fmt_history = w.user32.RegisterClipboardFormatW("CanIncludeInClipboardHistory")
         self._fmt_cloud = w.user32.RegisterClipboardFormatW("CanUploadToCloudClipboard")
