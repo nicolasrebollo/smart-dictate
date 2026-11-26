@@ -11,3 +11,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # The app's CPU onnxruntime stays on 1.23.x: the last version with Intel Mac wheels and macOS 13
+      # support (pyproject.toml). Newer ones would break the Intel Mac app. The GPU build is separate.
+      - dependency-name: onnxruntime
+        versions: [">=1.24"]
