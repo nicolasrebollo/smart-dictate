@@ -1,4 +1,4 @@
-# dictate
+# smart-dictate
 
 Hold a key, speak, let go: clean, punctuated text appears wherever your cursor is (VS Code,
 browsers, Outlook, Slack, anything). It works on your **PC, Mac and iPhone**.

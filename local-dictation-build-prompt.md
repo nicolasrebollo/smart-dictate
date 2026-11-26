@@ -1,4 +1,4 @@
-# Build prompt: a local, private "Wispr Flow"-style dictation app
+# Build prompt: a local, private dictation app
 
 You are helping me build a desktop dictation tool that runs 100% locally. The user holds a hotkey, speaks, releases, and a cleaned-up, well-punctuated version of what they said is inserted at the cursor in whatever app is focused. There's a speech-to-text (ASR) stage, then a small local LLM "cleanup pass", then text insertion. There are no cloud calls, no accounts and no telemetry. **The two goals that override everything else are speed (time from key release to text appearing) and accuracy (the text says what the user meant, and nothing else).**
 
