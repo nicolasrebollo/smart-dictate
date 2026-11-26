@@ -30,10 +30,11 @@ def check_server(server: str, token: str, timeout: float = 6.0) -> str:
     from websockets.exceptions import InvalidStatus
     from websockets.sync.client import connect
 
-    from dictate.client import ws_uri
+    from dictate.client import tls_context, ws_uri
 
     try:
-        with connect(ws_uri(server, token), open_timeout=timeout, compression=None):
+        uri = ws_uri(server, token)
+        with connect(uri, ssl=tls_context(uri), open_timeout=timeout, compression=None):
             return ""
     except InvalidStatus as e:
         if e.response.status_code == 401:

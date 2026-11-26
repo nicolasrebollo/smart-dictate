@@ -11,9 +11,9 @@ ICONS = ROOT / "build" / "icons"
 MAC = sys.platform == "darwin"
 
 if MAC:
-    hidden = ["pystray._darwin", "PyObjCTools.AppHelper", "Quartz", "ApplicationServices"]
+    hidden = ["pystray._darwin", "PyObjCTools.AppHelper", "Quartz", "ApplicationServices", "truststore._macos"]
 else:
-    hidden = ["pystray._win32", "pynput.keyboard._win32", "pynput.mouse._win32"]
+    hidden = ["pystray._win32", "pynput.keyboard._win32", "pynput.mouse._win32", "truststore._windows"]
 
 # Never needed by the client (some are installed on the PC that also runs the server).
 excludes = [

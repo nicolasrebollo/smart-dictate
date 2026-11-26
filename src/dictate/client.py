@@ -40,6 +40,24 @@ def ws_uri(server: str, token: str) -> str:
     return urlunsplit((scheme, parts.netloc, path, f"token={quote(token)}", ""))
 
 
+def tls_context(uri: str) -> Any:
+    """For wss://, check the PC's certificate against the computer's own trusted certificates (macOS
+    Keychain, Windows certificate store), like a browser does. Python's built-in default has none on a
+    Mac outside Homebrew, including in the installed app, so every connection failed there with
+    SSLCertVerificationError."""
+    if not uri.startswith("wss://"):
+        return None
+    import ssl
+
+    try:
+        import truststore
+
+        return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except Exception:
+        log.exception("system certificate store unavailable; using Python's default")
+        return ssl.create_default_context()
+
+
 class Connection:
     """One persistent WebSocket to the server; reconnects when needed."""
 
@@ -74,7 +92,9 @@ class Connection:
         from websockets.sync.client import connect
 
         try:
-            with connect(self.uri, open_timeout=5, compression=None, max_size=2**20, ping_interval=20) as ws:
+            with connect(
+                self.uri, ssl=tls_context(self.uri), open_timeout=5, compression=None, max_size=2**20, ping_interval=20
+            ) as ws:
                 self._ws = ws
                 opened.set()
                 self._on_change(True, "")

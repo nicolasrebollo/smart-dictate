@@ -11,6 +11,7 @@ dependencies = [
     "pyobjc-framework-ApplicationServices>=10; sys_platform == 'darwin'",
     "platformdirs>=4",
     "websockets>=15",
+    "truststore>=0.10",  # check the PC's certificate like a browser (Mac Keychain / Windows store)
     "pystray>=0.19",
     "pillow>=11",
 ]

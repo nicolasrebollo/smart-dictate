@@ -146,6 +146,7 @@ dependencies = [
     { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
     { name = "pystray" },
     { name = "sounddevice" },
+    { name = "truststore" },
     { name = "websockets" },
 ]
 
@@ -182,6 +183,7 @@ requires-dist = [
     { name = "rapidfuzz", marker = "extra == 'server'", specifier = ">=3" },
     { name = "sounddevice", specifier = ">=0.5" },
     { name = "soundfile", marker = "extra == 'server'", specifier = ">=0.13" },
+    { name = "truststore", specifier = ">=0.10" },
     { name = "websockets", specifier = ">=15" },
 ]
 provides-extras = ["server"]

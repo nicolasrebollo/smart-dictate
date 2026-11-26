@@ -158,3 +158,14 @@ def test_mac_app_moves_an_old_source_launch_agent_aside(monkeypatch, tmp_path) -
     moved = (agents / "com.dictate.source.plist").read_text(encoding="utf-8")
     assert "<string>com.dictate.source</string>" in moved and "dictate.cli" in moved
     assert "Dictate.app" in (agents / "com.dictate.app.plist").read_text(encoding="utf-8")
+
+
+def test_secure_links_use_the_computers_own_trusted_certificates() -> None:
+    import ssl
+
+    from dictate.client import tls_context
+
+    assert tls_context("ws://127.0.0.1:8765/ws?token=x") is None  # the PC's own client: no TLS
+    ctx = tls_context("wss://pc.tail1234.ts.net/ws?token=x")
+    assert isinstance(ctx, ssl.SSLContext) and type(ctx).__module__.startswith("truststore")
+    assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname
