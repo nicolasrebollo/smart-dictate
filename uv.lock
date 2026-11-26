@@ -238,7 +238,7 @@ wheels = [
 
 [[package]]
 name = "dictate"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -262,8 +262,8 @@ cloud = [
 ]
 server = [
     { name = "numpy" },
-    { name = "onnx-asr", extra = ["gpu", "hub"], marker = "(sys_platform == 'linux' and extra == 'extra-7-dictate-server') or (sys_platform == 'win32' and extra == 'extra-7-dictate-server') or (extra == 'extra-7-dictate-cloud' and extra == 'extra-7-dictate-server')" },
-    { name = "onnxruntime-gpu", extra = ["cuda", "cudnn"], marker = "(sys_platform == 'linux' and extra == 'extra-7-dictate-server') or (sys_platform == 'win32' and extra == 'extra-7-dictate-server') or (extra == 'extra-7-dictate-cloud' and extra == 'extra-7-dictate-server')" },
+    { name = "onnx-asr", extra = ["gpu", "hub"], marker = "(sys_platform == 'linux' or sys_platform == 'win32' or extra == 'extra-7-dictate-cloud') and extra == 'extra-7-dictate-server'" },
+    { name = "onnxruntime-gpu", extra = ["cuda", "cudnn"], marker = "(sys_platform == 'linux' or sys_platform == 'win32' or extra == 'extra-7-dictate-cloud') and extra == 'extra-7-dictate-server'" },
     { name = "rapidfuzz" },
     { name = "soundfile" },
 ]
@@ -284,10 +284,10 @@ requires-dist = [
     { name = "keyring", specifier = ">=25" },
     { name = "numpy", marker = "extra == 'cloud'", specifier = ">=2" },
     { name = "numpy", marker = "extra == 'server'", specifier = ">=2" },
-    { name = "onnx-asr", extras = ["gpu", "hub"], marker = "(sys_platform == 'linux' and extra == 'server') or (sys_platform == 'win32' and extra == 'server')", specifier = ">=0.12" },
+    { name = "onnx-asr", extras = ["gpu", "hub"], marker = "(sys_platform == 'linux' or sys_platform == 'win32') and extra == 'server'", specifier = ">=0.12" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin' and extra == 'cloud'", specifier = ">=1.23,<1.24" },
     { name = "onnxruntime", marker = "extra == 'cloud'", specifier = ">=1.23" },
-    { name = "onnxruntime-gpu", extras = ["cuda", "cudnn"], marker = "(sys_platform == 'linux' and extra == 'server') or (sys_platform == 'win32' and extra == 'server')", specifier = ">=1.32.0" },
+    { name = "onnxruntime-gpu", extras = ["cuda", "cudnn"], marker = "(sys_platform == 'linux' or sys_platform == 'win32') and extra == 'server'", specifier = ">=1.32.0" },
     { name = "pillow", specifier = ">=11" },
     { name = "platformdirs", specifier = ">=4" },
     { name = "pynput", marker = "sys_platform == 'win32'", specifier = ">=1.8" },
@@ -806,8 +806,8 @@ name = "nvidia-cudnn-cu13"
 version = "9.28.1.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas", version = "13.10.0.20", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'win32' and extra == 'extra-7-dictate-server') or (extra == 'extra-7-dictate-cloud' and extra == 'extra-7-dictate-server')" },
-    { name = "nvidia-cublas", version = "13.10.1.6", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform != 'win32' and extra == 'extra-7-dictate-server') or (extra == 'extra-7-dictate-cloud' and extra == 'extra-7-dictate-server')" },
+    { name = "nvidia-cublas", version = "13.10.0.20", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'win32' or extra == 'extra-7-dictate-cloud') and extra == 'extra-7-dictate-server'" },
+    { name = "nvidia-cublas", version = "13.10.1.6", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform != 'win32' or extra == 'extra-7-dictate-cloud') and extra == 'extra-7-dictate-server'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/08/b2/e50ec98e7d746d194aafab84dfb5a49b29ba1934441ddc613833ea0bdac7/nvidia_cudnn_cu13-9.28.1.4-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:759b6a4919951ed8ec603dec97b96f6a6396c8269b95b3d345526e2471fb433d", size = 597008823, upload-time = "2026-11-06T21:49:26.555Z" },
