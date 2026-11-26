@@ -30,22 +30,29 @@ The PC must be on for your Mac and iPhone to work.
    with the same account on all three.
 2. On the PC, run `tailscale serve --bg 8765`. This gives the server an HTTPS address that only your
    devices can reach.
-3. Restart `uv run dictate pc`. It now prints the exact settings for your Mac and the link for your iPhone.
+3. Restart `uv run dictate pc`. It now prints **your link** (`https://your-pc…ts.net/?t=…`). That one
+   link sets up every other device: phones open it, the desktop app asks for it.
 
-## 3. The Mac
+## 3. The Mac (and other computers)
+
+Install the **Dictate app** (see [Building the apps](#building-the-apps-and-sharing-them) for where
+it comes from): open the `.dmg`, drag Dictate into Applications, open it and paste your link. No
+terminal, no models: the download is about 20 MB. [QUICKSTART.md](QUICKSTART.md) walks through it step
+by step, including the one-time macOS security prompts. The same goes for a second Windows PC:
+run `Dictate-Windows-Setup.exe` and paste the link.
+
+The Mac hotkey is **Right Option**.
+
+<details><summary>From source instead (with a terminal)</summary>
 
 1. Install uv: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 2. Copy this folder to the Mac, then run `uv sync` in it. That installs the client only, no models.
-3. Run `uv run dictate config --edit` and fill in the `[client]` section with what the PC printed:
-   ```toml
-   server = "wss://your-pc.your-tailnet.ts.net"
-   token = "…"
-   ```
-4. Run `uv run dictate`. The first time, allow the app you ran it from (Terminal) in **System Settings
-   › Privacy & Security** under **Microphone**, **Accessibility** and **Input Monitoring**, then run it again.
+3. Run `uv run dictate app` and paste your link when it asks (or put `server` and `token` in the
+   `[client]` section of `uv run dictate config --edit`, then run `uv run dictate`).
+4. Allow the app you ran it from (Terminal) in **System Settings › Privacy & Security** under
+   **Microphone**, **Accessibility** and **Input Monitoring**, then run it again.
 5. Run `uv run dictate autostart on` to start it at login.
-
-The Mac hotkey is **Right Option**.
+</details>
 
 ## 4. The iPhone
 
@@ -72,7 +79,21 @@ around in it between dictations. The text is kept until you clear it. After each
 | Say "comma", "period", "question mark", "exclamation point", "colon", "semicolon", "dot dot dot" | that punctuation |
 | Say "open quote" … "close quote", "open paren" … "close paren" | quotes / parentheses |
 | Say "scratch that" | delete the last sentence |
-| Tray / menu-bar icon | status (white = ready, red = listening, amber = working, grey = can't reach the PC), language (English, Spanish, French), settings, quit |
+
+The tray / menu-bar icon shows the status (white = ready, red = listening, amber = working, dim =
+turned off, grey with a red line = can't reach the PC). Its menu holds every setting:
+
+| Menu item | What it does |
+|---|---|
+| **Turn off / Turn on Dictate** | off: the hotkey does nothing, the microphone and the connection are released (use the computer's own dictation, a game that needs the key, a break). On the PC, only this PC's hotkey turns off: the server keeps serving your other devices. |
+| **Language** | English, Spanish, French |
+| **Hotkey** | Right Ctrl / Right Alt on Windows; Right Option / Right Command / Fn on Mac |
+| **Microphone** | which mic, or the system's default |
+| **Sounds** | start / stop beeps |
+| **Start when I log in** | autostart on or off (Windows: Task Manager › Startup apps; Mac: Login Items) |
+| **Connect to a different PC…** | paste a new link (desktop app) |
+| **Advanced settings…** | the settings file |
+| **Quit Dictate** | stop until you open it again or log in again |
 
 The AI cleanup removes fillers ("um", "like"), applies your corrections ("Tuesday, no wait,
 Wednesday" → "Wednesday"), and fixes punctuation. It writes numbers, times, money, emails and URLs
@@ -89,6 +110,32 @@ stays a word: "the trial period", "a new line of products", "the Oxford comma".
 To teach it names and jargon, add them to `vocabulary` in the PC's `[server]` settings
 (`uv run dictate config --edit` on the PC), for example `vocabulary = ["Okonkwo", "pgvector"]`.
 Restart `dictate pc` to apply.
+
+## Building the apps and sharing them
+
+The desktop app is the client only (hotkey, microphone, paste, tray). It's built with PyInstaller:
+`Dictate-Windows-Setup.exe` (installs for the current user, no admin rights) and a `.dmg` for each
+kind of Mac. A Mac app can only be built on a Mac, so GitHub builds all three for you:
+
+1. Push this repository to GitHub.
+2. **Actions › Build apps › Run workflow.** After about 10 minutes the run's **Artifacts** hold
+   `Dictate-Windows-Setup.exe`, `Dictate-Mac-AppleSilicon.dmg` and `Dictate-Mac-Intel.dmg`.
+3. Or tag a version (`git tag v0.2.0` then `git push --tags`): the same files are attached to a
+   GitHub **Release**, which is a nice download page if the repository is public. If it's private,
+   send the files another way (a shared Drive folder, for example).
+
+To share Dictate with someone: invite them to your tailnet in the Tailscale admin console (Share
+your PC's machine, or invite them as a user), then send them the right file, your link, and
+[QUICKSTART.md](QUICKSTART.md).
+
+To build the Windows installer on this PC instead: `uv sync --extra server --group build`, then
+`uv run python packaging/build.py`. Install [Inno Setup](https://jrsoftware.org/isinfo.php) for the
+installer; without it you get a `.zip` with `Dictate.exe` inside.
+
+The apps aren't signed, so the first open shows a one-time warning ("Windows protected your PC" →
+More info › Run anyway; on a Mac, Privacy & Security › Open Anyway). QUICKSTART.md covers both.
+Removing the warnings needs an Apple Developer ID (with notarization) and a Windows code-signing
+certificate, both paid.
 
 ## Speed
 
@@ -115,11 +162,12 @@ round trip: +5–20 ms at home, +30–80 ms elsewhere.
 
 ## Troubleshooting
 
-- **The icon is grey (can't reach the PC):** check the PC is on and running `dictate pc`, Tailscale is
-  connected on both devices, and the `server`/`token` in the Mac settings match what the PC printed.
-- **Nothing happens on the Mac:** allow Terminal (or whatever app runs dictate) under Accessibility,
-  Input Monitoring and Microphone, then restart dictate.
-- **Wrong microphone:** run `uv run dictate devices`, then set `input_device` in `[client]`.
+- **The icon is grey (can't reach the PC):** check the PC is on and running `dictate pc`, and Tailscale is
+  connected on both devices. If the PC's token changed, use **Connect to a different PC…** with the new link.
+- **Nothing happens on the Mac:** allow Dictate (or Terminal, from source) under Accessibility and
+  Input Monitoring in System Settings › Privacy & Security. Check the icon isn't dim (turned off).
+- **Wrong microphone:** pick it under **Microphone** in the tray menu.
+- **Logs:** `%LOCALAPPDATA%\dictate\logs\dictate.log` (Windows), `~/Library/Logs/dictate/dictate.log` (Mac).
 - **Slow on the PC:** another program is using the GPU (a game, or an ML job in WSL/Docker).
 
 ## Development

@@ -47,6 +47,25 @@ def list_input_devices() -> list[tuple[int, str, bool]]:
     return [(i, dev["name"], i == default_in) for i, dev in devices if dev["max_input_channels"] > 0]
 
 
+def microphone_names() -> list[str]:
+    """Input devices of the default sound system, by name, for a menu. (Windows lists every mic once
+    per sound system: MME, DirectSound, WASAPI...; only the default system's copy is shown.)"""
+    try:
+        default_api = sd.query_hostapis(sd.default.hostapi)["name"] if sd.default.hostapi >= 0 else None
+    except Exception:
+        default_api = None
+    names: list[str] = []
+    for dev in sd.query_devices():
+        if dev["max_input_channels"] <= 0:
+            continue
+        if default_api is not None and sd.query_hostapis(dev["hostapi"])["name"] != default_api:
+            continue
+        name = str(dev["name"]).strip()
+        if name and name not in names and "mapper" not in name.lower() and "primary sound" not in name.lower():
+            names.append(name)
+    return names
+
+
 def level_warning(pcm: bytes | Any) -> str | None:
     """A muted/blocked mic delivers (near) digital silence; a quiet room is around -65 dBFS.
     Accepts PCM16 bytes, or a float array in [-1, 1]."""
@@ -112,6 +131,31 @@ class Mic:
 
     def close(self) -> None:
         self._stop_stream()
+
+    def set_device(self, spec: str | int) -> None:
+        """Switch microphones ('' = the system default). Raises ValueError if there's no such mic."""
+        device = resolve_device(spec)
+        was_open = self._stream is not None
+        self._stop_stream()
+        self._device = device
+        if was_open:
+            self._start_stream()
+        else:
+            self.name = sd.query_devices(device if device is not None else sd.default.device[0])["name"]
+
+    def request_access(self) -> None:
+        """Open the mic for a moment, so macOS asks for microphone permission now rather than in the
+        middle of the first dictation."""
+        if self._stream is not None:
+            return
+        try:
+            self._start_stream()
+            threading.Event().wait(0.3)
+        except Exception:
+            log.debug("microphone access check failed", exc_info=True)
+        finally:
+            if not self.keep_open:
+                self._stop_stream()
 
     def _callback(self, indata: Any, frames: int, time_info: Any, status: sd.CallbackFlags) -> None:
         block = bytes(indata)  # little-endian int16 on every platform we support

@@ -187,6 +187,15 @@ class HotkeyListener:
         self._listener: Any = None
         self._thread = threading.Thread(target=self._run, name="hotkeys", daemon=True)
         self._esc_suppressed = False
+        self.paused = False  # "Turn off": keys are seen but do nothing
+        self.started = False
+
+    def set_paused(self, paused: bool) -> None:
+        """Pausing discards a recording in progress (as a DISCARD event)."""
+        self._q.put(("pause" if paused else "resume", "", 0.0))
+
+    def set_ptt(self, name: str) -> None:
+        self._q.put(("ptt", name, 0.0))
 
     def start(self) -> None:
         import sys
@@ -197,6 +206,7 @@ class HotkeyListener:
             self._listener = MacKeyTap(lambda kind, name: self._q.put((kind, name, time.perf_counter())))
             self._listener.start()  # raises PermissionError with instructions if macOS refuses
             self._thread.start()
+            self.started = True
             return
 
         from pynput import keyboard
@@ -229,6 +239,7 @@ class HotkeyListener:
         self._listener = keyboard.Listener(on_press=on_press, on_release=on_release, **kwargs)
         self._listener.start()
         self._thread.start()
+        self.started = True
 
     def stop(self) -> None:
         if self._listener is not None:
@@ -247,17 +258,31 @@ class HotkeyListener:
             if kind == "quit":
                 return
             try:
+                if kind in ("pause", "resume", "ptt"):
+                    self._control(kind, name)
+                    continue
                 self._emit(self._handle(kind, name, t))
                 self._emit(self._rec.tick(time.perf_counter()))
             except Exception:
                 log.exception("hotkey handling failed")
                 self._rec.reset()
 
+    def _control(self, kind: str, name: str) -> None:
+        if kind == "ptt":
+            self._ptt = parse_key(name)
+        elif kind == "pause":
+            self.paused = True
+        else:
+            self.paused = False
+        if self._rec.recording:
+            self._emit([Event(Action.DISCARD, reason=kind)])
+        self._rec.reset()
+
     def _handle(self, kind: str, name: str, t: float) -> list[Event]:
         if kind == "down":
             repeat = name in self._down
             self._down.add(name)
-            if repeat:
+            if repeat or self.paused:
                 return []
             if name in self._raw:
                 self._rec.raw_mod(True)
@@ -268,6 +293,8 @@ class HotkeyListener:
                 return self._rec.cancel_down(t)
             return self._rec.other_key_down(t)
         self._down.discard(name)
+        if self.paused:
+            return []
         if name in self._raw:
             self._rec.raw_mod(False)
             return []

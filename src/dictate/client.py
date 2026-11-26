@@ -117,6 +117,13 @@ class Connection:
             with contextlib.suppress(Exception):
                 ws.close()
 
+    def retarget(self, server: str, token: str) -> None:
+        """Talk to a different PC from now on (the next ensure() connects there)."""
+        self.server = server
+        self.uri = ws_uri(server, token)
+        self.last_error = ""
+        self.close()
+
 
 def make_inserter(cfg: Config) -> Any:
     c = cfg.client
@@ -131,32 +138,49 @@ def make_inserter(cfg: Config) -> Any:
     raise SystemExit("The dictate client supports Windows and macOS.")
 
 
-def mac_permissions_ok() -> bool:
-    """Accessibility (to press Cmd+V) and Input Monitoring (to see the hotkey). If either is missing,
-    ask macOS to show its permission prompts, and return False."""
-    ok = True
+MAC_SETTINGS = {
+    "Accessibility": "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+    "Input Monitoring": "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+}
+
+
+def mac_permissions(*, prompt: bool) -> dict[str, bool]:
+    """Accessibility (to press Cmd+V) and Input Monitoring (to see the hotkey). With prompt=True,
+    macOS shows its own permission prompts for whatever is missing."""
+    got = {"Accessibility": True, "Input Monitoring": True}
     try:
         from ApplicationServices import AXIsProcessTrustedWithOptions, kAXTrustedCheckOptionPrompt
 
-        ok = bool(AXIsProcessTrustedWithOptions({kAXTrustedCheckOptionPrompt: True})) and ok
+        got["Accessibility"] = bool(AXIsProcessTrustedWithOptions({kAXTrustedCheckOptionPrompt: prompt}))
     except Exception:
         log.debug("accessibility check unavailable", exc_info=True)
     try:
         import Quartz
 
-        if not Quartz.CGPreflightListenEventAccess():
+        got["Input Monitoring"] = bool(Quartz.CGPreflightListenEventAccess())
+        if prompt and not got["Input Monitoring"]:
             Quartz.CGRequestListenEventAccess()
-            ok = False
     except Exception:
         log.debug("input monitoring check unavailable", exc_info=True)
-    return ok
+    return got
+
+
+def mac_permissions_ok() -> bool:
+    return all(mac_permissions(prompt=True).values())
 
 
 class Client:
-    def __init__(self, cfg: Config, *, token: str | None = None) -> None:
+    """The hotkey client. It also implements tray.Controls: everything the menu can change."""
+
+    def __init__(self, cfg: Config, *, token: str | None = None, mode: str = "client", app: bool = False) -> None:
         c = cfg.client
         self.cfg = cfg
+        self.mode = mode  # "client", or "pc" when this computer also runs the server
+        self.app = app  # the installed app: there's no terminal, so problems are shown in dialogs
         self.language = c.language
+        self.hotkey = c.hotkey
+        self.enabled = True
+        self.can_change_server = mode == "client"
         self.inserter = make_inserter(cfg)
         self.sounds = Sounds(paths.data_dir() / "sounds", enabled=c.sounds, volume=c.volume)
         self.conn = Connection(c.server, token if token is not None else c.token, self._connection_changed)
@@ -174,29 +198,45 @@ class Client:
         self._level_buf: list[bytes] = []
         self.tray: Any = None
         self._state = ("offline", "Connecting…")
+        self._blocked = ""  # shown instead of "Ready" while macOS permissions are missing
 
     # -- state / tray ---------------------------------------------------------------------------
+    def _ready_status(self) -> str:
+        return f"Ready: hold {display_key(self.hotkey)} and speak"
+
     def _set_state(self, state: str, status: str) -> None:
+        if state == "ready" and self._blocked:
+            state, status = "offline", self._blocked
         self._state = (state, status)
+        if not self.enabled and state != "off":
+            return  # turned off: the icon keeps saying so
         if self.tray is not None:
             self.tray.set_state(state, status)
+
+    def _ready_or_current(self) -> tuple[str, str]:
+        return ("ready", self._ready_status()) if self.conn.connected else self._state
 
     def _connection_changed(self, ok: bool, error: str) -> None:
         if ok:
             log.info("connected to %s", self.conn.server)
-            self._set_state("ready", "Ready")
+            self._set_state("ready", self._ready_status())
         else:
             log.warning("offline: %s", error)
             self._set_state("offline", f"Offline: {error}")
 
     def _keep_connected(self) -> None:
         while not self._stopping.wait(5):
-            if not self.conn.connected:
+            if self.enabled and not self.conn.connected:
                 self.conn.ensure()
 
     # -- hotkey thread (never blocks) -----------------------------------------------------------
     def on_event(self, ev: Event) -> None:
         if ev.action == Action.START:
+            if sys.platform == "win32" and self.hotkey.startswith("alt"):
+                with contextlib.suppress(Exception):
+                    from dictate.platform_win import mask_alt_menu
+
+                    mask_alt_menu()  # releasing a lone Alt would otherwise open the app's menu bar
             self._work.put(("start", self.language))
             self.mic.begin(self._on_audio)
             self.sounds.play("start")
@@ -217,7 +257,7 @@ class Client:
             self._work.put(("cancel",))
             if ev.action == Action.CANCEL:
                 self.sounds.play("cancel")
-            self._set_state(*(("ready", "Ready") if self.conn.connected else self._state))
+            self._set_state(*self._ready_or_current())
 
     def _on_audio(self, block: bytes) -> None:  # microphone thread: queue only
         self._work.put(("audio", block))
@@ -273,7 +313,7 @@ class Client:
         if m.get("type") != "result":
             log.warning("dictation failed: %s", m.get("message"))
             self.sounds.play("error")
-            self._set_state(*(("ready", "Ready") if self.conn.connected else self._state))
+            self._set_state(*self._ready_or_current())
             return
         text = m.get("text", "")
         if not text:
@@ -283,7 +323,7 @@ class Client:
         what = f"{len(text.split())} words" if text else "nothing heard"
         shown = f": {text}" if self.cfg.logging.log_transcripts else ""
         log.info("%s in %.0f ms (server %s ms, %s)%s", what, rtt, m.get("ms"), m.get("mode"), shown)
-        self._set_state("ready", "Ready")
+        self._set_state("ready", self._ready_status())
 
     def _check_level(self) -> None:
         if self._level_checked or not self._level_buf:
@@ -294,12 +334,124 @@ class Client:
         if warning:
             log.warning(warning)
 
-    # -- tray actions ----------------------------------------------------------------------------------
+    # -- menu actions (tray.Controls; called from a worker thread, may block) ------------------------
+    def _save(self, key: str, value: str | bool) -> None:
+        if self.cfg.source_path is None:
+            return
+        try:
+            set_value(self.cfg.source_path, "client", key, value)
+        except OSError:
+            log.exception("could not save the setting %s", key)
+
+    def _tell(self, title: str, text: str) -> None:
+        log.warning("%s: %s", title, text)
+        if self.app:
+            from dictate import dialogs
+
+            dialogs.message(title, text)
+
     def set_language(self, code: str) -> None:
         self.language = code
-        if self.cfg.source_path is not None:
-            set_value(self.cfg.source_path, "client", "language", code)
+        self._save("language", code)
         log.info("language: %s", code)
+
+    def set_enabled(self, on: bool) -> None:
+        """Off: the hotkey does nothing, the microphone is released (other apps and the system's own
+        dictation can use it) and the connection to the PC is closed. Quitting does the same."""
+        if on == self.enabled:
+            return
+        self.enabled = on
+        self.hotkeys.set_paused(not on)
+        if on:
+            log.info("turned on")
+            try:
+                self.mic.open()
+            except Exception:
+                log.exception("could not open the microphone")
+            self._set_state("offline", "Connecting…")
+            self.conn.ensure()
+        else:
+            log.info("turned off")
+            self.mic.end()
+            self.mic.close()
+            self.conn.close()
+            self._set_state("off", "Off: Dictate isn't using the hotkey or the microphone")
+
+    @property
+    def sounds_on(self) -> bool:
+        return self.sounds.enabled
+
+    def set_sounds(self, on: bool) -> None:
+        self.sounds.enabled = on
+        self._save("sounds", on)
+
+    def set_hotkey(self, name: str) -> None:
+        if name == self.cfg.client.cancel:
+            return
+        self.hotkey = name
+        self.hotkeys.set_ptt(name)
+        self._save("hotkey", name)
+        log.info("hotkey: %s", name)
+        self._set_state(*self._ready_or_current())
+
+    def microphones(self) -> list[str]:
+        try:
+            from dictate.mic import microphone_names
+
+            return microphone_names()
+        except Exception:
+            log.debug("could not list microphones", exc_info=True)
+            return []
+
+    def microphone(self) -> str:
+        return str(self.cfg.client.input_device)
+
+    def set_microphone(self, name: str) -> None:
+        try:
+            self.mic.set_device(name)
+        except Exception as e:
+            self._tell("Microphone not available", f"Dictate couldn't use “{name}” ({e}). Is it plugged in?")
+            return
+        self.cfg.client.input_device = name
+        self._save("input_device", name)
+        log.info("microphone: %s", self.mic.name)
+
+    def autostart_on(self) -> bool:
+        from dictate import autostart
+
+        try:
+            return autostart.is_enabled()
+        except Exception:
+            return False
+
+    def set_autostart(self, on: bool) -> None:
+        from dictate import autostart
+
+        try:
+            log.info(autostart.enable(self.mode) if on else autostart.disable())
+        except Exception as e:
+            log.exception("autostart")
+            self._tell("Couldn't change that", f"Dictate couldn't change the start-at-login setting ({e}).")
+
+    def change_server(self) -> None:
+        from dictate import offline
+        from dictate.app import ask_for_link
+
+        current = urlsplit(self.conn.server).hostname or ""
+        got = ask_for_link(allow_host=lambda host: offline.install_network_guard(allow_hosts=[current, host]))
+        server = got[0] if got is not None else self.conn.server
+        offline.install_network_guard(allow_hosts=[urlsplit(server).hostname or ""])
+        if got is None:
+            return
+        server, token = got
+        self.cfg.client.server, self.cfg.client.token = server, token
+        self._save("server", server)
+        self._save("token", token)
+        log.info("now using %s", server)
+        self.conn.retarget(server, token)
+        self._set_state("offline", "Connecting…")
+        if self.enabled:
+            self.conn.ensure()
 
     def open_settings(self) -> None:
         path = self.cfg.source_path
@@ -310,20 +462,77 @@ class Client:
         else:
             subprocess.Popen(["open", "-t", str(path)])
 
+    # -- macOS permissions (installed app) ---------------------------------------------------------------
+    def _wait_for_permission(self) -> None:
+        """Explain what to switch on, then keep checking: Dictate starts working the moment it's allowed,
+        without a restart (unless macOS itself asks for one)."""
+        from dictate import dialogs
+
+        missing = [name for name, ok in mac_permissions(prompt=False).items() if not ok] or ["Input Monitoring"]
+        choice = dialogs.message(
+            "Dictate needs your permission",
+            "To hear the hotkey and type for you, Dictate needs two switches in System Settings › "
+            "Privacy & Security:\n\n"
+            "•  Accessibility: turn on Dictate\n"
+            "•  Input Monitoring: turn on Dictate\n\n"
+            "If Dictate isn't in a list, click + and pick it from Applications. If macOS offers to "
+            "“Quit & Reopen” Dictate, click it.",
+            ("Later", "Open System Settings"),
+        )
+        guided = choice == "Open System Settings"
+        opened: set[str] = set()
+        if guided:
+            subprocess.Popen(["open", MAC_SETTINGS[missing[0]]])
+            opened.add(missing[0])
+        while not self._stopping.wait(2):
+            got = mac_permissions(prompt=False)
+            if not self.hotkeys.started:
+                with contextlib.suppress(PermissionError):
+                    self.hotkeys.start()
+            if got["Accessibility"] and self.hotkeys.started:
+                self._blocked = ""
+                log.info("macOS permissions granted")
+                self._set_state(*self._ready_or_current())
+                return
+            if guided and got["Accessibility"] and "Input Monitoring" not in opened:
+                subprocess.Popen(["open", MAC_SETTINGS["Input Monitoring"]])  # on to the second switch
+                opened.add("Input Monitoring")
+
     # -- lifecycle --------------------------------------------------------------------------------------
-    def run(self, *, tray: bool = True) -> None:
-        if sys.platform == "darwin" and not mac_permissions_ok():
+    def run(self, *, tray: bool = True, on_ready: Callable[[], None] | None = None) -> None:
+        mac = sys.platform == "darwin"
+        permitted = mac_permissions_ok() if mac else True
+        if not permitted and not self.app:
             print("  macOS needs permission: System Settings > Privacy & Security > Accessibility (and Input")
             print("  Monitoring): turn on the app you started dictate from (Terminal), then restart dictate.")
-        self.mic.open()
+        try:
+            self.mic.open()
+        except Exception:
+            if not self.app:
+                raise
+            log.exception("could not open the chosen microphone: using the system's default")
+            with contextlib.suppress(Exception):
+                self.mic.set_device("")
         log.info("microphone: %s", self.mic.name)
         threading.Thread(target=self._worker, name="worker", daemon=True).start()
         try:
             self.hotkeys.start()
         except PermissionError as e:
-            self.mic.close()
-            raise SystemExit(f"\n  {e}\n") from None
-        self.conn.ensure()
+            if not self.app:
+                self.mic.close()
+                raise SystemExit(f"\n  {e}\n") from None
+            permitted = False
+        if not permitted and self.app:
+            self._blocked = "Needs permission: see System Settings › Privacy & Security"
+            self._state = ("offline", self._blocked)
+
+        def ready() -> None:  # once the icon is up: the caller's welcome, then any permission help
+            if on_ready is not None:
+                on_ready()
+            if self._blocked:
+                self._wait_for_permission()
+
+        threading.Thread(target=self.conn.ensure, name="connect", daemon=True).start()
         threading.Thread(target=self._keep_connected, name="reconnect", daemon=True).start()
         c = self.cfg.client
         key, cancel = display_key(c.hotkey), display_key(c.cancel)
@@ -334,16 +543,14 @@ class Client:
         if tray:
             from dictate.tray import Tray
 
-            self.tray = Tray(
-                language=self.language, on_language=self.set_language, on_settings=self.open_settings,
-                on_quit=self.stop,
-            )  # fmt: skip
+            self.tray = Tray(self)
             self.tray.set_state(*self._state)
-            print("  Quit from the tray icon (or Ctrl+C here).\n")
+            print("  Turn it off, switch language or quit from the tray icon (or Ctrl+C here).\n")
             with contextlib.suppress(KeyboardInterrupt):
-                self.tray.run()
+                self.tray.run(on_ready=ready)
         else:
             print("  Ctrl+C to quit.\n")
+            threading.Thread(target=ready, daemon=True).start()
             try:
                 while not self._stopping.wait(0.5):
                     pass

@@ -1,6 +1,7 @@
 """Command line.
 
 dictate              the client (Mac or PC): hotkey -> speak -> text at your cursor
+dictate app          the same, as the installed app runs it (setup and messages in windows)
 dictate pc           the PC with the GPU: server + client in one tray app
 dictate server       the server only (no hotkey on this machine)
 dictate setup        download the models (on the PC only)
@@ -44,7 +45,13 @@ def cmd_client(args: argparse.Namespace) -> None:
     offline.install_network_guard(allow_hosts=[host])  # the client only ever talks to your server
     from dictate.client import Client
 
-    Client(cfg, token=token).run(tray=not args.no_tray)
+    Client(cfg, token=token, mode="client").run(tray=not args.no_tray)
+
+
+def cmd_app(args: argparse.Namespace) -> None:
+    from dictate.app import main as app_main
+
+    app_main()
 
 
 # -- server ---------------------------------------------------------------------------------------
@@ -100,11 +107,11 @@ def _print_connection_info(cfg, token: str) -> None:
     if name:
         print("  Your other devices reach it through Tailscale. If you haven't yet, run once on this PC:")
         print(f"      tailscale serve --bg {port}")
-        print("  Mac: put these in the [client] section of its settings (`dictate config --edit`):")
-        print(f'      server = "wss://{name}"')
-        print(f'      token = "{token}"')
-        print("  iPhone: open this once in Safari, then Share > Add to Home Screen:")
+        print("  Your link (keep it private: it's the key to this PC's dictation):")
         print(f"      https://{name}/?t={token}")
+        print("  Phone: open it in Safari (Chrome on Android), then Add to Home Screen.")
+        print("  Mac / Windows: install the Dictate app and paste the link when it asks.")
+        print(f'  (Or in a client settings file: server = "wss://{name}", token = "{token}")')
     else:
         print("  To use it from your Mac and iPhone: install Tailscale on all three devices")
         print("  (https://tailscale.com), sign in with the same account, then restart `dictate pc`.")
@@ -119,7 +126,7 @@ def cmd_pc(args: argparse.Namespace) -> None:
     from dictate.client import Client
 
     cfg.client.server = f"ws://127.0.0.1:{cfg.server.port}"  # this machine's client talks to its own server
-    Client(cfg, token=token).run(tray=not args.no_tray)
+    Client(cfg, token=token, mode="pc").run(tray=not args.no_tray)
 
 
 def cmd_server(args: argparse.Namespace) -> None:
@@ -211,6 +218,7 @@ def main(argv: list[str] | None = None) -> None:
     for name, help_ in (("client", "hotkey client (default)"), ("pc", "server + client on the PC with the GPU")):
         sp = sub.add_parser(name, help=help_)
         sp.add_argument("--no-tray", action="store_true", help="no tray / menu-bar icon")
+    sub.add_parser("app", help="the client with setup and messages in windows (what the installed app runs)")
     sub.add_parser("server", help="server only (speech recognition + AI cleanup)")
     sub.add_parser("setup", help="download the models (PC only; the only command that uses the internet)")
     a = sub.add_parser("autostart", help="start dictate when you log in")
@@ -237,7 +245,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd is None:
         args.cmd, args.no_tray = "client", False
     handlers = {
-        "client": cmd_client, "pc": cmd_pc, "server": cmd_server, "setup": cmd_setup, "autostart": cmd_autostart,
+        "client": cmd_client, "app": cmd_app, "pc": cmd_pc, "server": cmd_server, "setup": cmd_setup,
+        "autostart": cmd_autostart,
         "devices": cmd_devices, "config": cmd_config, "bench": cmd_bench,
     }  # fmt: skip
     handlers[args.cmd](args)

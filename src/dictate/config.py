@@ -387,10 +387,19 @@ def load_config(path: Path | None = None) -> Config:
     return parse_config(path.read_text(encoding="utf-8"), source_path=path)
 
 
-def set_value(path: Path, section: str, key: str, value: str) -> None:
-    """Set `key = "value"` inside [section], keeping everything else (comments included) as is."""
+def _toml_literal(value: str | bool | int) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def set_value(path: Path, section: str, key: str, value: str | bool | int) -> None:
+    """Set `key = value` inside [section], keeping everything else (comments included) as is."""
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-    rx = re.compile(rf'^(\s*{re.escape(key)}\s*=\s*)"[^"]*"(.*)$', re.DOTALL)
+    literal = _toml_literal(value)
+    rx = re.compile(rf'^(\s*{re.escape(key)}\s*=\s*)(?:"(?:[^"\\]|\\.)*"|true|false|-?\d+)(.*)$', re.DOTALL)
     in_section, insert_at = False, None
     for i, line in enumerate(lines):
         stripped = line.strip()
@@ -401,7 +410,7 @@ def set_value(path: Path, section: str, key: str, value: str) -> None:
             in_section = stripped == f"[{section}]"
             continue
         if in_section and (m := rx.match(line)):
-            head, rest = f'{m.group(1)}"{value}"', m.group(2)
+            head, rest = m.group(1) + literal, m.group(2)
             if rest.lstrip().startswith("#"):  # keep the comment, aligned like the others when it fits
                 rest = " " * max(1, 32 - len(head)) + rest.lstrip()
             lines[i] = head + rest
@@ -411,9 +420,9 @@ def set_value(path: Path, section: str, key: str, value: str) -> None:
         pos = insert_at if insert_at is not None else len(lines)
         if pos == len(lines) and lines and not lines[-1].endswith("\n"):
             lines[-1] += "\n"
-        lines.insert(pos, f'{key} = "{value}"\n')
+        lines.insert(pos, f"{key} = {literal}\n")
     else:
-        lines.append(f'\n[{section}]\n{key} = "{value}"\n')
+        lines.append(f"\n[{section}]\n{key} = {literal}\n")
     path.write_text("".join(lines), encoding="utf-8")
 
 

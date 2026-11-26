@@ -268,3 +268,12 @@ def foreground_info() -> ForegroundInfo:
         finally:
             kernel32.CloseHandle(proc)
     return ForegroundInfo(int(hwnd or 0), pid.value, exe, elevated)
+
+
+VK_UNASSIGNED = 0xE8  # a key code no keyboard sends and no app reacts to
+
+
+def mask_alt_menu() -> None:
+    """While Alt is held, tap an unassigned key, so releasing Alt doesn't open the app's menu bar
+    (which would also swallow our Ctrl+V). Used when the hotkey is an Alt key."""
+    send_inputs([key_input(VK_UNASSIGNED), key_input(VK_UNASSIGNED, flags=KEYEVENTF_KEYUP)])
