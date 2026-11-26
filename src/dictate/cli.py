@@ -97,6 +97,10 @@ def _start_server(cfg) -> str:
 def _print_connection_info(cfg, token: str) -> None:
     from dictate.server import tailscale_name
 
+    if os.environ.get("DICTATE_QUIET"):  # the app's own background server: its output goes to a log file
+        print(f"Server running on this PC (port {cfg.server.port}).")
+        return
+
     port = cfg.server.port
     name = tailscale_name()
     print(f"\n  Server running on this PC (port {port}).")

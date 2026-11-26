@@ -90,6 +90,17 @@ def _response(status: HTTPStatus, body: bytes, ctype: str) -> Response:
             ("Content-Length", str(len(body))),
             ("Cache-Control", "no-cache"),
             ("X-Content-Type-Options", "nosniff"),
+            # The page's address carries the token: never pass it on, never load anything from elsewhere,
+            # and never let another site put the page in a frame.
+            ("Referrer-Policy", "no-referrer"),
+            ("X-Frame-Options", "DENY"),
+            (
+                "Content-Security-Policy",
+                # blob: is the microphone's audio processor (an AudioWorklet the page builds itself)
+                "default-src 'self'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; connect-src 'self' wss: ws:; frame-ancestors 'none'; base-uri 'none'; "
+                "form-action 'none'",
+            ),
         ]
     )
     return Response(status.value, status.phrase, headers, body)

@@ -16,3 +16,10 @@ bench/reports/
 *.onnx
 *.onnx.data
 *.gguf
+
+# Never commit settings, keys or logs (they can hold your server token or API keys)
+.env
+.env.*
+config.toml
+*.log
+selftest.json

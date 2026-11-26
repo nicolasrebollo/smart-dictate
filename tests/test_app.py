@@ -205,3 +205,26 @@ def test_online_setup_saves_choices_and_keeps_keys_out_of_the_file(monkeypatch, 
     assert cfg.client.mode == "online"
     assert (cfg.online.speech, cfg.online.speech_model) == ("openai", "gpt-transcribe")
     assert (cfg.online.cleanup, cfg.online.cleanup_model) == ("anthropic", "claude-opus-5-5")
+
+
+def test_logs_never_contain_tokens_or_api_keys() -> None:
+    import logging
+
+    from dictate.logs import RedactingFormatter, redact
+
+    lines = {
+        "> GET /ws?token=AbCdEfGhIjKlMnOpQr12 HTTP/1.1": "> GET /ws?token=<hidden> HTTP/1.1",
+        "https://pc.tail1234.ts.net/?t=AbCdEfGhIjKlMnOpQr12": "https://pc.tail1234.ts.net/?t=<hidden>",
+        'token = "AbCdEfGhIjKlMnOpQr12"': 'token = "<hidden>"',
+        "Incorrect API key provided: sk-proj-abcdefghijklmnop1234": "Incorrect API key provided: sk-proj-<hidden>",
+        "key sk-ant-api03-abcdefghijklmnop": "key sk-ant-<hidden>",
+        "AIzaSyD-abcdefghijklmnopqrstuvwxyz012345 and xai-abcdefghijklmnopqrstu": "AIza<hidden> and xai-<hidden>",
+        "Authorization: Bearer abcdefghijklmnop.qrs": "Authorization: Bearer <hidden>",
+        "hold Right Ctrl, hotkey ctrl_r, keywords[]": "hold Right Ctrl, hotkey ctrl_r, keywords[]",  # untouched
+    }
+    for line, expected in lines.items():
+        assert redact(line) == expected
+    record = logging.LogRecord(
+        "x", logging.INFO, "f", 1, "connected to %s", ("wss://pc/ws?token=AbCdEfGhIjKlMn",), None
+    )
+    assert "AbCdEfGhIjKlMn" not in RedactingFormatter("%(message)s").format(record)  # arguments too

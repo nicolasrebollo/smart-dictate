@@ -109,6 +109,7 @@ def _env() -> dict[str, str]:
         "UV_NO_CONFIG": "1",
         "DICTATE_MODELS_DIR": str(models_dir()),
         "PYTHONUTF8": "1",
+        "DICTATE_QUIET": "1",  # the server doesn't print its link (with the token) into local-server.log
         "PYTHONUNBUFFERED": "1",
     }
 
