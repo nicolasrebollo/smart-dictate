@@ -112,6 +112,7 @@ Everything is in Dictate's **microphone icon**:
 | **Language** | English, Español, Français |
 | **Hotkey** | the key you hold. Windows: Right Ctrl or Right Alt (useful if your keyboard has no Right Ctrl). Mac: Right Option, Right Command or Fn (for Fn, also set System Settings › Keyboard › "Press 🌐 key to" to **Do Nothing**). |
 | **Microphone** | which microphone to use. "Same as the system" follows your computer's sound settings. **Computer audio (what's playing)** transcribes what's coming out of your speakers instead, like a video or a call (see below). |
+| **Type as I speak** | ticked: each sentence appears as you talk (a moment after you finish it), instead of everything at once when you let go of the key |
 | **Sounds** | the small beeps when it starts and stops listening |
 | **Start when I log in** | ticked: Dictate starts by itself when you log in (it's on after setup) |
 | **Change how Dictate works…** | pick a different option from step 2, paste a new link, or enter a new API key. Dictate restarts with the new setup. |
@@ -128,6 +129,12 @@ hotkey, and other apps can use the microphone at the same time.
 
 **The icon's colors:** white = ready, red = listening, amber = working, dim = turned off, grey with
 a red line = can't reach the PC or the online service (open the menu: the first line says why).
+
+### Is it listening?
+
+While Dictate listens, a small **● Recording** badge appears at the top of your screen (and next to
+the title in the Notes window). After you let go it says **● Transcribing…** until your text arrives,
+then disappears. You can keep typing and clicking: the badge never gets in the way.
 
 ### Transcribing a video or a call
 

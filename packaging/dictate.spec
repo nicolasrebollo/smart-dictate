@@ -17,7 +17,7 @@ MAC = sys.platform == "darwin"
 
 hidden = [
     "dictate.cloud.speech", "dictate.cloud.chat", "dictate.cloud.claude", "dictate.cloud.keys",
-    "dictate.engine", "dictate.server", "dictate.modes", "dictate.notes.window", "dictate.updates", "sqlite3",
+    "dictate.engine", "dictate.server", "dictate.modes", "dictate.notes.window", "dictate.updates", "dictate.indicator", "sqlite3",
 ]
 if MAC:
     hidden += ["pystray._darwin", "PyObjCTools.AppHelper", "Quartz", "ApplicationServices", "AppKit",

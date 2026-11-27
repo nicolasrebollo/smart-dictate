@@ -19,16 +19,21 @@ TOKEN = "test-token-123"
 
 
 class FakeSession:
-    def __init__(self, engine, language, source="mic"):
+    def __init__(self, engine, language, source="mic", on_text=None):
         self.engine, self.language, self.source, self.bytes = engine, language, source, 0
+        self.on_text, self.live = on_text, on_text is not None
         engine.sessions.append(self)
         self.cancelled = False
 
     def feed_pcm16(self, data: bytes) -> None:
         self.bytes += len(data)
+        if self.on_text is not None and self.bytes == 640:  # live: a sentence is final
+            self.on_text("First sentence.")
 
     def finish(self, raw: bool = False) -> Result:
         text = "" if self.bytes == 0 else f"heard {self.bytes} bytes in {self.language}{' raw' if raw else ''}"
+        if self.live:
+            text = " The rest."
         return Result(text, text, "raw" if raw else "cleaned", 1.0, self.bytes / 32000)
 
     def cancel(self) -> None:
@@ -39,8 +44,8 @@ class FakeEngine:
     def __init__(self):
         self.sessions = []
 
-    def session(self, language="en", source="mic"):
-        return FakeSession(self, language, source)
+    def session(self, language="en", source="mic", on_text=None):
+        return FakeSession(self, language, source, on_text)
 
 
 @pytest.fixture(scope="module")
@@ -145,3 +150,26 @@ def test_client_reports_unreachable_server() -> None:
     conn = Connection("ws://127.0.0.1:1", TOKEN, lambda ok, err: states.append((ok, err)))
     assert conn.ensure() is False
     assert states and states[0][0] is False and "can't reach" in states[0][1]
+
+
+def test_live_typing_sends_sentences_as_they_are_final(server) -> None:
+    engine, url = server
+    with connect(ws_uri(url, TOKEN), open_timeout=3) as ws:
+        ws.send(json.dumps({"type": "start", "language": "en", "live": True, "source": "computer"}))
+        ws.send(b"\x00\x01" * 320)
+        m = json.loads(ws.recv(timeout=5))
+        assert m == {"type": "partial", "text": "First sentence."}  # while still talking
+        ws.send(json.dumps({"type": "stop", "raw": False}))
+        m = json.loads(ws.recv(timeout=5))
+        assert m["type"] == "result" and m["text"] == " The rest." and m["live"] is True
+    assert engine.sessions[-1].source == "computer"
+
+
+def test_without_live_nothing_changes(server) -> None:
+    _, url = server
+    with connect(ws_uri(url, TOKEN), open_timeout=3) as ws:
+        ws.send(json.dumps({"type": "start", "language": "en"}))
+        ws.send(b"\x00\x01" * 320)
+        ws.send(json.dumps({"type": "stop", "raw": False}))
+        m = json.loads(ws.recv(timeout=5))
+        assert m["type"] == "result" and "live" not in m and m["text"].startswith("heard")

@@ -108,6 +108,18 @@ def _checks() -> dict[str, str]:
         cap.close()
         return "loopback works"
 
+    def badge() -> str:
+        if sys.platform == "darwin":
+            from AppKit import NSPanel  # noqa: F401
+
+            import dictate.indicator  # noqa: F401
+
+            return "AppKit ready"
+        from dictate.indicator import RED, render_badge
+
+        img = render_badge("Recording", RED, 1.5)
+        return f"{img.size[0]}x{img.size[1]}"
+
     def dictation() -> str:
         from websockets.sync.client import connect
 
@@ -137,6 +149,7 @@ def _checks() -> dict[str, str]:
     check("local mode bundle", local_bundle)
     check("notes", notes)
     check("computer audio", computer_audio)
+    check("recording badge", badge)
     check("online dictation", dictation)
     return results
 

@@ -168,7 +168,10 @@ class TextInserter:
             except ClipboardBusyError:
                 self._prefetched = None
 
-    def insert(self, text: str) -> InsertOutcome:
+    def insert(self, text: str, *, live: bool = False) -> InsertOutcome:
+        """live: typed while you may still be holding the hotkey (typing as you speak), so held modifier
+        keys are let go of first instead of waited for."""
+        self._live = live
         if not text:
             return InsertOutcome("none", True)
         fg = w.foreground_info()
@@ -206,7 +209,7 @@ class TextInserter:
             our_seq = self._clip.set_text(text)
             self._saved_seq = our_seq
 
-        _wait_modifiers_released()
+        _ready_for_keys(getattr(self, "_live", False), keep_ctrl=True)
         w.send_inputs(
             [
                 w.key_input(w.VK_CONTROL),
@@ -254,7 +257,7 @@ class TextInserter:
 
     # -- type ---------------------------------------------------------------------------
     def _type(self, text: str) -> InsertOutcome:
-        _wait_modifiers_released()
+        _ready_for_keys(getattr(self, "_live", False), keep_ctrl=False)
         inputs: list[w.INPUT] = []
         for ch in text.replace("\r\n", "\n"):
             if ch == "\n":
@@ -275,6 +278,34 @@ class TextInserter:
 def _utf16_units(ch: str) -> list[int]:
     data = ch.encode("utf-16-le")
     return [int.from_bytes(data[i : i + 2], "little") for i in range(0, len(data), 2)]
+
+
+_HELD_KEYS = (  # (key, extended key flag): the left/right modifiers a hotkey or a held Shift can be
+    (0xA0, 0), (0xA1, 0),  # Shift
+    (0xA4, 0), (0xA5, 0x1),  # Alt (Right Alt is an extended key)
+    (0x5B, 0x1), (0x5C, 0x1),  # Windows
+)  # fmt: skip
+_CTRL_KEYS = ((0xA2, 0), (0xA3, 0x1))
+
+
+def _ready_for_keys(live: bool, *, keep_ctrl: bool) -> None:
+    if not live:
+        _wait_modifiers_released()
+        return
+    _release_held_modifiers(keep_ctrl=keep_ctrl)
+
+
+def _release_held_modifiers(*, keep_ctrl: bool) -> None:
+    """Typing as you speak, while the hotkey is still held: tell Windows the held modifiers are up (our
+    hotkey listener ignores these injected key-ups and keeps following the real key). Otherwise Ctrl+V
+    with Right Alt held would be Ctrl+Alt+V. Ctrl can stay down for Ctrl+V."""
+    keys = [*_HELD_KEYS, *([] if keep_ctrl else _CTRL_KEYS)]
+    held = [(vk, ext) for vk, ext in keys if w.key_is_down(vk)]
+    if not held:
+        return
+    if any(vk in (0xA4, 0xA5) for vk, _ in held):
+        w.mask_alt_menu()  # letting go of Alt mustn't open the app's menu bar
+    w.send_inputs([w.key_input(vk, flags=w.KEYEVENTF_KEYUP | ext) for vk, ext in held])
 
 
 def _wait_modifiers_released(timeout_s: float = 0.5) -> None:

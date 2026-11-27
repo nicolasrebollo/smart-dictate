@@ -3,10 +3,14 @@
 Protocol (WebSocket at /ws?token=...):
   client -> {"type": "start", "language": "en"}        begin a dictation
               (+ "source": "computer" when it's the computer's own audio: no spoken commands)
+              (+ "live": true to type as you speak: "partial" messages while speaking)
   client -> binary frames                                16 kHz mono PCM16 little-endian, while speaking
   client -> {"type": "stop", "raw": false}               done: returns the result
   client -> {"type": "cancel"}                           discard
+  server -> {"type": "partial", "text": " Next sentence."}   live: type this now (it's final)
   server -> {"type": "result", "text": "...", "heard": "...", "mode": "cleaned", "ms": 182}
+              (live: "text" is only what's left to type, and "live": true says so; an older server
+              has neither, and its "text" is the whole dictation)
   server -> {"type": "error", "message": "..."}
 
 HTTP GET / serves the phone web app. The token comes from the URL you open once (/?t=...); only
@@ -27,6 +31,7 @@ from functools import cache
 from http import HTTPStatus
 from importlib import resources
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, quote, urlsplit
 
 from websockets.asyncio.server import ServerConnection, serve
@@ -152,14 +157,27 @@ class DictateServer:
                 if kind == "start":
                     if session is not None:
                         session.cancel()
-                    session = self.engine.session(str(m.get("language", "en")), str(m.get("source", "mic")))
+                    on_text = None
+                    if m.get("live"):
+                        loop = asyncio.get_running_loop()
+
+                        def on_text(text: str, ws: Any = ws, loop: Any = loop) -> None:  # cleanup thread
+                            msg = json.dumps({"type": "partial", "text": text})
+                            asyncio.run_coroutine_threadsafe(ws.send(msg), loop)
+
+                    session = self.engine.session(
+                        str(m.get("language", "en")), str(m.get("source", "mic")), on_text=on_text
+                    )
                 elif kind == "stop" and session is not None:
                     s, session = session, None
+                    live = bool(getattr(s, "live", False))
                     t0 = time.perf_counter()
                     try:
                         r = await asyncio.to_thread(s.finish, bool(m.get("raw", False)))
                         ms = round((time.perf_counter() - t0) * 1000)
                         reply = {"type": "result", "text": r.text, "heard": r.heard, "mode": r.mode, "ms": ms}
+                        if live:
+                            reply["live"] = True
                     except Exception as e:  # never let one dictation take the server down
                         log.exception("dictation failed")
                         reply = {"type": "error", "message": f"server error: {e}"}

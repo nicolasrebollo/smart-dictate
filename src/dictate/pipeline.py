@@ -3,6 +3,7 @@ so the daemon, `dictate transcribe` and the benchmarks all share exactly this co
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -104,11 +105,44 @@ class Pipeline:
     def llm_active(self) -> bool:
         return self.cleaner is not None and self.cfg.cleanup.enabled
 
-    def new_incremental(self) -> IncrementalCleaner | None:
-        """An incremental cleaner for one streamed utterance (None if not enabled)."""
+    def new_incremental(self, on_locked: Callable[[PipelineResult], None] | None = None) -> IncrementalCleaner | None:
+        """An incremental cleaner for one streamed utterance (None if not enabled). With `on_locked` (typing
+        as you speak) there's always one, AI cleanup or not, and it hands on short sentences too."""
+        if on_locked is not None:
+            return IncrementalCleaner(
+                lambda text: self.clean_text(text), self.cfg.asr.language, min_words=1, on_locked=on_locked
+            )
         if not (self.llm_active and self.cfg.cleanup.incremental):
             return None
         return IncrementalCleaner(lambda text: self.clean_text(text), self.cfg.asr.language)
+
+    def finish_live(
+        self,
+        segment_texts: list[str],
+        *,
+        incremental: IncrementalCleaner,
+        raw: bool = False,
+        timings: Timings | None = None,
+    ) -> tuple[PipelineResult, str]:
+        """Typing as you speak: the locked chunks were already typed. Returns the whole text and what's
+        left to type (the cleaned tail, with the right space or line break in front). No greeting /
+        sign-off layout: it would move text that's already on screen."""
+        t = timings or Timings()
+        asr_text = " ".join(s.strip() for s in segment_texts if s.strip())
+        with t.stage("llm_wait"):
+            locked, tail = incremental.finalize(segment_texts[-1] if segment_texts else "")
+        tail_res = self.clean_text(tail, raw=raw, timings=t) if tail.strip() else None
+        parts: list[PipelineResult] = [*locked, *([tail_res] if tail_res else [])]
+        typed = join_chunks([r.text for r in locked])
+        whole = join_chunks([r.text for r in parts])
+        res = PipelineResult(whole, asr_text, 0.0, 0.0, timings=t)
+        res.used_llm = any(r.used_llm for r in parts)
+        res.skipped_llm = bool(parts) and all(r.skipped_llm for r in parts)
+        res.fallback_reason = next((r.fallback_reason for r in parts if r.fallback_reason), "")
+        res.chunks = len(parts)
+        res.locked_chunks = len(locked)
+        rest = whole[len(typed) :] if whole.startswith(typed) else (tail_res.text if tail_res else "")
+        return res, rest
 
     def finish_stream(
         self,

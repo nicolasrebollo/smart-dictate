@@ -107,6 +107,7 @@ turned off, grey with a red line = can't reach the speech recognition). Its menu
 | **Language** | English, Spanish, French |
 | **Hotkey** | Right Ctrl / Right Alt on Windows; Right Option / Right Command / Fn on Mac |
 | **Microphone** | which mic, the system's default, or **Computer audio (what's playing)**: transcribe a video, a call or a podcast instead of your voice (see below) |
+| **Type as I speak** | on: each sentence is typed as soon as it's final, while you keep talking; off: everything at once when you let go (see below) |
 | **Sounds** | start / stop beeps |
 | **Start when I log in** | autostart on or off (Windows: Task Manager › Startup apps; Mac: Login Items) |
 | **Change how Dictate works…** | switch between your GPU, a PC's link and an online service, or enter a new key or link |
@@ -118,6 +119,20 @@ Spoken punctuation works in Spanish and French too ("coma", "punto y aparte", "a
 "virgule", "point à la ligne", "point d'interrogation"). A command word you use as a normal word
 stays a word: "the trial period", "a new line of products", "the Oxford comma". The AI cleanup never
 answers or acts on what you dictate, and if its output looks wrong the plain transcript is used.
+
+### Type as I speak, and the Recording badge
+
+With **Type as I speak** ticked in the menu, sentences appear while you're still talking instead of all
+at once when you let go. A sentence is typed once you've moved on to the next one, because that next
+phrase can still change it ("Let's meet Tuesday. No wait, Wednesday." only types "Wednesday"). The last
+sentence comes when you let go of the key. It works with every way of running Dictate, with your
+microphone or with computer audio, held or hands-free. Two things change: text that's already typed
+stays if you press Esc, and the greeting / sign-off of a message isn't moved onto its own line.
+
+While Dictate listens, a small **● Recording** badge shows at the top of the screen (red, pulsing),
+then **● Transcribing…** (amber) until the text arrives. It never takes the focus and clicks go
+through it. The Notes window shows the same dot next to its title. To hide the badge, set
+`indicator = false` in the `[client]` settings.
 
 ### Transcribing what's playing (computer audio)
 

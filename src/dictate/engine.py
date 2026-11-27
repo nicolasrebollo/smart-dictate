@@ -12,12 +12,14 @@ import logging
 import queue
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
 from dictate import models
-from dictate.cleanup.incremental import IncrementalCleaner
+from dictate.cleanup.incremental import IncrementalCleaner, join_chunks
 from dictate.cleanup.llm_cleanup import Cleaner
 from dictate.config import LANGUAGES, Config
 from dictate.pipeline import Pipeline
@@ -30,7 +32,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class Result:
-    text: str  # what to insert ("" = nothing was said)
+    text: str  # what to insert ("" = nothing was said; typing as you speak: what's left to type)
     heard: str  # raw speech recognition
     mode: str  # cleaned | rules | raw | fallback | empty
     ms: float  # time from "stop" to result, on the server
@@ -88,10 +90,15 @@ class Engine:
             if self._keep_warm is not None:
                 (self._keep_warm.start if self._active > 0 else self._keep_warm.stop)()
 
-    def session(self, language: str = "en", source: str = "mic") -> EngineSession:
+    def session(
+        self, language: str = "en", source: str = "mic", on_text: Callable[[str], None] | None = None
+    ) -> EngineSession:
         """source "computer": the audio is what's playing on the computer (a video, a call), not someone
-        dictating, so spoken commands ("new paragraph", "scratch that", "comma") stay words."""
-        return EngineSession(self, language if language in LANGUAGES else "en", source)
+        dictating, so spoken commands ("new paragraph", "scratch that", "comma") stay words.
+
+        on_text: type as you speak. Each finished sentence is passed to it as soon as it's final (with
+        the space or line break that goes before it), and finish() then returns only what's left."""
+        return EngineSession(self, language if language in LANGUAGES else "en", source, on_text)
 
     def close(self) -> None:
         if self.llm is not None:
@@ -99,15 +106,22 @@ class Engine:
 
 
 class EngineSession:
-    def __init__(self, engine: Engine, language: str, source: str = "mic") -> None:
+    def __init__(
+        self, engine: Engine, language: str, source: str = "mic", on_text: Callable[[str], None] | None = None
+    ) -> None:
         self.engine = engine
+        self.live = on_text is not None
+        self._on_text = on_text
+        self._typed: list[str] = []  # the chunks handed to on_text so far
         cfg = copy.deepcopy(engine.cfg)
         cfg.asr.language = language
         if source == "computer":
             cfg.commands.enabled = False
         cleaner = Cleaner(engine.llm, cfg) if engine.llm is not None else None
         self.pipeline = Pipeline(cfg, engine.asr, cleaner)
-        self.incremental: IncrementalCleaner | None = self.pipeline.new_incremental()
+        self.incremental: IncrementalCleaner | None = self.pipeline.new_incremental(
+            self._chunk_ready if self.live else None
+        )
         inc = self.incremental
         self.stream = StreamingSession(
             engine.worker,
@@ -127,6 +141,16 @@ class EngineSession:
         self._pending = np.zeros(0, dtype=np.float32)
         self._done = False
         engine._activity(+1)
+
+    def _chunk_ready(self, res: Any) -> None:
+        """A sentence (or a few) is final: type it now, after what's already typed."""
+        if self._done or self._on_text is None or not res.text:
+            return
+        before = join_chunks(self._typed)
+        self._typed.append(res.text)
+        piece = join_chunks(self._typed)[len(before) :]
+        if piece.strip():
+            self._on_text(piece)
 
     def feed_pcm16(self, data: bytes) -> None:
         """Audio as it's recorded: 16 kHz mono signed 16-bit little-endian."""
@@ -153,7 +177,11 @@ class EngineSession:
                 if self.incremental is not None:
                     self.incremental.abandon()
                 return Result("", "", "empty", t.total_ms(), audio_s)
-            res = self.pipeline.finish_stream(texts, incremental=self.incremental, raw=raw, timings=t)
+            if self.live and self.incremental is not None:
+                res, rest = self.pipeline.finish_live(texts, incremental=self.incremental, raw=raw, timings=t)
+            else:
+                res = self.pipeline.finish_stream(texts, incremental=self.incremental, raw=raw, timings=t)
+                rest = res.text
             if raw:
                 mode = "raw"
             elif res.fallback_reason:
@@ -164,7 +192,7 @@ class EngineSession:
                      f": {res.fallback_reason}" if res.fallback_reason else "", t.summary())  # fmt: skip
             if self.engine.cfg.logging.log_transcripts:
                 log.info("  heard: %s\n  text:  %s", res.asr_text, res.text)
-            return Result(res.text, res.asr_text, mode, t.total_ms(), audio_s)
+            return Result(rest, res.asr_text, mode, t.total_ms(), audio_s)
         finally:
             self._release()
 

@@ -64,6 +64,7 @@ class Controls(Protocol):
     enabled: bool
     hotkey: str
     sounds_on: bool
+    live: bool
     can_change_server: bool
     can_reconfigure: bool
     can_update: bool
@@ -73,6 +74,7 @@ class Controls(Protocol):
     def set_enabled(self, on: bool) -> None: ...
     def set_hotkey(self, name: str) -> None: ...
     def set_sounds(self, on: bool) -> None: ...
+    def set_live(self, on: bool) -> None: ...
     def microphones(self) -> list[str]: ...
     def microphone(self) -> str: ...
     def set_microphone(self, name: str) -> None: ...
@@ -145,6 +147,8 @@ class Tray:
             Item("Language", languages),
             Item("Hotkey", hotkeys),
             Item("Microphone", mics),
+            Item("Type as I speak", later(lambda: controls.set_live(not controls.live)),
+                 checked=lambda _i: controls.live),
             Item("Sounds", later(lambda: controls.set_sounds(not controls.sounds_on)),
                  checked=lambda _i: controls.sounds_on),
             autostart,

@@ -19,6 +19,7 @@ from tkinter import messagebox, ttk
 from typing import Any
 
 from dictate import instance
+from dictate.indicator import read_state
 from dictate.notes.store import (
     DATE_PRESETS,
     KEEP_DELETED_DAYS,
@@ -50,6 +51,9 @@ LIGHT = {
     "field": "#f2f2f5",
     "error": "#d93025",
     "drop": "#cddcfb",
+    "rec": "#e5372b",
+    "rec_dim": "#f2a29c",
+    "busy": "#c77c00",
 }
 DARK = {
     "bg": "#1e1e20",
@@ -64,6 +68,9 @@ DARK = {
     "field": "#2c2c30",
     "error": "#f28b82",
     "drop": "#33507f",
+    "rec": "#ff453a",
+    "rec_dim": "#7d2a25",
+    "busy": "#ffb340",
 }
 
 
@@ -147,6 +154,8 @@ class NotesWindow:
             self.root.createcommand("tk::mac::Quit", self.close)
         self.root.report_callback_exception = lambda *exc: log.error("notes window error", exc_info=exc)
         self.root.after(400, self._watch_show_requests)
+        self._recording_shown: str | None = None
+        self.root.after(300, self._watch_recording)
 
     # -- look ---------------------------------------------------------------------------------------
     def _fonts(self) -> None:
@@ -293,7 +302,12 @@ class NotesWindow:
 
         # folders
         side = ttk.Frame(panes, style="Side.TFrame", padding=(10, 14, 10, 10))
-        ttk.Label(side, text="Notes", style="Side.TLabel").pack(anchor="w", padx=6, pady=(0, 10))
+        head = ttk.Frame(side, style="Side.TFrame")
+        head.pack(fill="x", pady=(0, 10))
+        ttk.Label(head, text="Notes", style="Side.TLabel").pack(side="left", padx=6)
+        # "● Recording" while Dictate listens (it runs in another process: see indicator.py)
+        self.recording = tk.Label(head, text="", bg=c["side"], fg=c["rec"], font=self.f["small"])
+        self.recording.pack(side="right", padx=(0, 4))
         self.folders = ttk.Treeview(side, style="Side.Treeview", show="tree", columns=("n",), selectmode="browse")
         self.folders.column("#0", width=150, stretch=True)
         self.folders.column("n", width=34, anchor="e", stretch=False)
@@ -1045,6 +1059,24 @@ class NotesWindow:
             self._move_folder(d["item"], None if target == "all" else target)
 
     # -- running --------------------------------------------------------------------------------------
+    def _watch_recording(self) -> None:
+        state = read_state()
+        if state != self._recording_shown:
+            self._recording_shown = state
+            if state == "listening":
+                self.recording.configure(text="●  Recording", fg=self.c["rec"])
+                self.root.title("● Recording · Notes")
+            elif state == "working":
+                self.recording.configure(text="●  Transcribing", fg=self.c["busy"])
+                self.root.title("Notes")
+            else:
+                self.recording.configure(text="")
+                self.root.title("Notes")
+        if state == "listening":  # the dot pulses, like the badge
+            pulse = int(time.monotonic() / 0.6) % 2
+            self.recording.configure(fg=self.c["rec"] if pulse else self.c["rec_dim"])
+        self.root.after(300, self._watch_recording)
+
     def _watch_show_requests(self) -> None:
         req = _show_request()
         if req.exists():

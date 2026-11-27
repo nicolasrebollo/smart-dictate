@@ -209,6 +209,7 @@ class Client:
         self.app = app  # the installed app: there's no terminal, so problems are shown in dialogs
         self.label = label  # where the speech recognition runs, e.g. "Online: OpenAI + Claude"
         self.language = c.language
+        self.live = c.live  # type as you speak
         self.hotkey = c.hotkey
         self.enabled = True
         self._reconfigure = reconfigure
@@ -221,6 +222,9 @@ class Client:
         self.conn = Connection(self.server, token if token is not None else c.token, self._connection_changed)
         self.mic = Mic(c.input_device, c.preroll_ms, keep_open=c.keep_mic_open)
         self.mic.on_error = self._system_audio_failed
+        from dictate.indicator import Indicator
+
+        self.indicator = Indicator(enabled=c.indicator)  # the "Recording" badge, and the Notes window's dot
         self.recognizer = GestureRecognizer(
             tap_max_s=c.tap_max_ms / 1000, double_tap_window_s=c.double_tap_window_ms / 1000, hands_free=c.hands_free
         )
@@ -229,6 +233,7 @@ class Client:
             is_injecting=lambda: bool(getattr(self.inserter, "injecting", False)),
         )  # fmt: skip
         self._work: queue.Queue[tuple] = queue.Queue()
+        self._typed_live = False  # this dictation already typed something as you spoke
         self._stopping = threading.Event()
         self._level_checked = False
         self._level_buf: list[bytes] = []
@@ -248,6 +253,7 @@ class Client:
         threading.Thread(target=self._tell, args=("Can't hear the computer's audio", message), daemon=True).start()
 
     def _set_state(self, state: str, status: str) -> None:
+        self.indicator.show(state, computer_audio=self.mic.system)
         if state == "ready" and self._blocked:
             state, status = "offline", self._blocked
         self._state = (state, status)
@@ -318,19 +324,26 @@ class Client:
                 return
             try:
                 if kind == "start":
-                    start = {"type": "start", "language": item[1]}
+                    self._drop_results()  # nothing from an earlier dictation is typed into this one
+                    self._typed_live = False
+                    start: dict[str, Any] = {"type": "start", "language": item[1]}
                     if item[2] == "computer":  # what's playing, not you: no spoken commands
                         start["source"] = "computer"
+                    if self.live:
+                        start["live"] = True
                     dropping = not (self.conn.ensure() and self.conn.send(json.dumps(start)))
                     if dropping:
                         self.sounds.play("error")
                 elif kind == "audio":
                     if not dropping and not self.conn.send(item[1]):
                         dropping = True
+                    self.indicator.heartbeat()
+                    self._type_partials()
                 elif kind == "cancel":
                     if not dropping:
                         self.conn.send(json.dumps({"type": "cancel"}))
                     dropping = False
+                    self._drop_results()
                 elif kind == "stop":
                     self._check_level()
                     if dropping:
@@ -343,17 +356,44 @@ class Client:
                 self.sounds.play("error")
                 dropping = False
 
+    def _drop_results(self) -> None:
+        while True:
+            try:
+                self.conn.results.get_nowait()
+            except queue.Empty:
+                return
+
+    def _type_partials(self) -> None:
+        """Typing as you speak: type the sentences the server has finished (anything else waiting is
+        stale: an error from before this dictation, say)."""
+        while True:
+            try:
+                m = self.conn.results.get_nowait()
+            except queue.Empty:
+                return
+            if m.get("type") == "partial":
+                self._type_live(str(m.get("text", "")))
+
+    def _type_live(self, text: str) -> None:
+        if text:
+            self.inserter.insert(text, live=True)
+            self._typed_live = True
+
     def _finish(self, raw: bool) -> None:
-        while not self.conn.results.empty():  # drop anything stale
-            self.conn.results.get_nowait()
+        self._type_partials()  # sentences that came in just before the key was let go
         t0 = time.perf_counter()
         if not self.conn.send(json.dumps({"type": "stop", "raw": raw})):
             self.sounds.play("error")
             return
-        try:
-            m = self.conn.results.get(timeout=30)
-        except queue.Empty:
-            m = {"type": "error", "message": "the server took too long"}
+        deadline = time.monotonic() + 30
+        while True:
+            try:
+                m = self.conn.results.get(timeout=max(0.1, deadline - time.monotonic()))
+            except queue.Empty:
+                m = {"type": "error", "message": "the server took too long"}
+            if m.get("type") != "partial":
+                break
+            self._type_live(str(m.get("text", "")))  # the last sentences finish while the tail is cleaned
         rtt = (time.perf_counter() - t0) * 1000
         if m.get("type") != "result":
             message = str(m.get("message", "")).removeprefix("server error: ")
@@ -365,10 +405,11 @@ class Client:
             self._set_state(state, status)
             return
         text = m.get("text", "")
-        if not text:
-            self.sounds.play("nothing")
-        else:
+        typed_live, self._typed_live = self._typed_live, False
+        if text:
             self.inserter.insert(text)
+        elif not typed_live:
+            self.sounds.play("nothing")
         what = f"{len(text.split())} words" if text else "nothing heard"
         shown = f": {text}" if self.cfg.logging.log_transcripts else ""
         log.info("%s in %.0f ms (server %s ms, %s)%s", what, rtt, m.get("ms"), m.get("mode"), shown)
@@ -398,6 +439,13 @@ class Client:
             from dictate import dialogs
 
             dialogs.message(title, text)
+
+    def set_live(self, on: bool) -> None:
+        """Menu: Type as I speak."""
+        self.live = on
+        self.cfg.client.live = on
+        self._save("live", on)
+        log.info("type as I speak: %s", "on" if on else "off")
 
     def set_language(self, code: str) -> None:
         self.language = code
@@ -639,6 +687,7 @@ class Client:
         self._stopping.set()
         self.hotkeys.stop()
         self.mic.close()
+        self.indicator.close()
         self._work.put(("quit",))
         self.inserter.flush()
         self.conn.close()

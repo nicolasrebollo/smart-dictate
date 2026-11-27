@@ -47,6 +47,8 @@ language = "en"                 # en | es | fr (also switchable from the tray ic
 input_device = ""               # "" = default mic (`dictate devices` lists them); "computer audio" = what's playing
 keep_mic_open = {keep_mic}{keep_pad}# true: never clips your first word, but the OS shows "mic in use" all the time
 sounds = true
+live = false                    # true: type each sentence as you speak, instead of all at the end
+indicator = true                # the small "Recording" badge at the top of the screen while listening
 
 [server]
 port = 8765
@@ -88,6 +90,8 @@ class ClientConfig:
     double_tap_window_ms: int = 400
     restore_clipboard: bool = True
     restore_delay_ms: int = 400
+    live: bool = False  # type as you speak: each sentence appears once it's final, not all at the end
+    indicator: bool = True  # the "Recording" badge on screen while Dictate listens
 
 
 @dataclass

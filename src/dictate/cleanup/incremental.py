@@ -10,6 +10,10 @@ Segments arrive from the streaming transcriber at natural pauses. A run of segme
 
 So "Let's meet Tuesday. <pause> No wait, Wednesday." is still cleaned as one piece. At key
 release only the unlocked tail is cleaned, so long dictations don't pay for the whole text.
+
+Typing as you speak ([client] live) uses the same locking: each locked chunk, once cleaned, is handed to
+`on_locked` and typed right away. Text is only ever typed once it's final, so a correction in the next
+phrase ("No wait, Wednesday") is still applied before anything appears.
 """
 
 from __future__ import annotations
@@ -127,8 +131,16 @@ def join_chunks(parts: list[str]) -> str:
 class IncrementalCleaner:
     """Owns its own worker thread; `clean_chunk(text)` must return an object with `.text`."""
 
-    def __init__(self, clean_chunk: Callable[[str], Any], language: str = "en", *, min_words: int = 8) -> None:
+    def __init__(
+        self,
+        clean_chunk: Callable[[str], Any],
+        language: str = "en",
+        *,
+        min_words: int = 8,
+        on_locked: Callable[[Any], None] | None = None,
+    ) -> None:
         self.clean_chunk = clean_chunk
+        self.on_locked = on_locked  # each cleaned chunk, in order, before finalize() can return it
         self.rules = rules_for(language)
         self.min_words = min_words
         self._pending: list[str] = []
@@ -143,7 +155,13 @@ class IncrementalCleaner:
         while (item := self._q.get()) is not None:
             text, fut = item
             try:
-                fut.set_result(self.clean_chunk(text))
+                result = self.clean_chunk(text)
+                if self.on_locked is not None:
+                    try:
+                        self.on_locked(result)
+                    except Exception:
+                        log.exception("couldn't pass on a finished chunk")
+                fut.set_result(result)
             except Exception as e:
                 log.exception("incremental cleanup failed")
                 fut.set_exception(e)

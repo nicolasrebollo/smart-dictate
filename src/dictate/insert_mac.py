@@ -44,7 +44,8 @@ class MacInserter:
     def prefetch(self) -> None:
         pass
 
-    def insert(self, text: str) -> InsertOutcome:
+    def insert(self, text: str, *, live: bool = False) -> InsertOutcome:
+        """live is accepted for symmetry: ⌘V is sent with only Command set, whatever else is held."""
         if not text:
             return InsertOutcome("none", True)
         with self._lock:
