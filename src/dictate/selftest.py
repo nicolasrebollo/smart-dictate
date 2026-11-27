@@ -69,6 +69,10 @@ def _checks() -> dict[str, str]:
         b = local_gpu.bundle_dir()
         if b is None:
             raise RuntimeError("local-mode bundle missing")
+        # graphics card / processor variants
+        missing = [n for n in ("uv.exe", "requirements.txt", "requirements-cpu.txt") if not (b / n).is_file()]
+        if missing or not any(b.glob("dictate-*.whl")):
+            raise RuntimeError(f"local-mode bundle incomplete: missing {missing or 'the Dictate wheel'}")
         return ", ".join(sorted(p.name for p in b.iterdir()))
 
     def notes() -> str:

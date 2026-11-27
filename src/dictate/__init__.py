@@ -1,3 +1,3 @@
 """dictate: local, private push-to-talk dictation."""
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"

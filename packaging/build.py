@@ -84,11 +84,12 @@ def local_mode_bundle() -> Path:
     shutil.copy2(uv, out / "uv.exe")
     subprocess.run([uv, "build", "--wheel", "--out-dir", str(out)], check=True, cwd=ROOT)
     (out / ".gitignore").unlink(missing_ok=True)  # uv build leaves one in its output folder
-    subprocess.run(
-        [uv, "export", "--frozen", "--extra", "server", "--no-dev", "--no-emit-project", "--format",
-         "requirements-txt", "--output-file", str(out / "requirements.txt")],
-        check=True, cwd=ROOT,
-    )  # fmt: skip
+    for extra, name in (("server", "requirements.txt"), ("cpu", "requirements-cpu.txt")):  # GPU / processor
+        subprocess.run(
+            [uv, "export", "--frozen", "--extra", extra, "--no-dev", "--no-emit-project", "--format",
+             "requirements-txt", "--output-file", str(out / name)],
+            check=True, cwd=ROOT,
+        )  # fmt: skip
     return out
 
 

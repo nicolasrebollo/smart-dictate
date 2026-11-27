@@ -5,12 +5,13 @@ browsers, Outlook, Slack, anything). It works on **Windows, Mac and iPhone**.
 
 Dictate removes filler words, applies your corrections ("Tuesday, no wait, Wednesday" → "Wednesday"),
 writes numbers, times, emails and code identifiers properly, and follows spoken commands ("new
-paragraph", "comma", "scratch that"). The speech recognition and the AI cleanup run in one of three
+paragraph", "comma", "scratch that"). The speech recognition and the AI cleanup run in one of four
 places, which you pick when you set up the app:
 
 | | Where your speech is turned into text | You need | Privacy |
 |---|---|---|---|
 | **Your own GPU** | this Windows PC's NVIDIA graphics card (6 GB or more) | a one-time 6 GB download | nothing leaves the PC |
+| **Your own processor** | any Windows PC, no graphics card needed (a ThinkPad, a laptop with integrated graphics) | a one-time 1.3 GB download | nothing leaves the PC |
 | **A PC that shares Dictate** | someone's PC with a GPU (yours, or a friend's) | Tailscale and that PC's link | only between your devices, encrypted |
 | **An online AI service** | OpenAI, Anthropic (Claude), Google (Gemini) or xAI (Grok) | your own API key (pay per use) | your recordings go to that service |
 
@@ -54,6 +55,20 @@ and cheaper than Opus, for example: `cleanup_model = "claude-haiku-5-5"`).
 The first time, Dictate downloads Python, NVIDIA's GPU libraries (pinned to the exact versions in
 this repository's `uv.lock`, hash-checked) and the models into `%LOCALAPPDATA%\dictate\app-runtime`
 (about 6 GB, 10–30 minutes). After that it works offline. Uninstalling Dictate deletes that folder.
+
+### Your own processor (Windows, any PC)
+
+For PCs without an NVIDIA card. The same engine runs on the processor alone: the int8 version of the
+speech model (0.1–0.4 s per phrase on a laptop processor, transcribed while you're still talking),
+llama.cpp's processor build and a small cleanup model (Qwen 3.5 0.8B, about a second per sentence; it
+skips sentences that are already clean). The first time, Dictate downloads about 1.3 GB into the same
+`app-runtime` folder (5–15 minutes); it needs about 1.5 GB of memory while it runs. Text appears
+a moment later than with a graphics card, and the processor works hard while you dictate.
+
+For better cleanup at about twice the wait, set `model = "gemma-4-e2b"` (or `"qwen3.5-2b"`) in the
+`[server]` settings; Dictate downloads it the next time it starts. The settings it uses are in
+`src/dictate/config.py` (`_processor_only`); anything you set yourself takes precedence. A source
+checkout can do the same with `uv sync --extra cpu` and `local_device = "cpu"` in `[client]`.
 
 ### A PC that shares Dictate (the original setup)
 

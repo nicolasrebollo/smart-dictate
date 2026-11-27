@@ -3,7 +3,8 @@
   remote  a PC that shares Dictate with you: connect to its link (wss://...)
   online  an online AI service: the engine runs inside this app (speech detection, spoken commands,
           formatting) and sends each phrase to the service you chose, with your API key
-  local   this computer's NVIDIA graphics card: the app's own copy of the server runs in the background
+  local   this computer: the app's own copy of the server runs in the background, on the NVIDIA graphics
+          card or on the processor alone ([client] local_device, see local_gpu.py)
 
 Whatever the mode, the hotkey client always talks to a Dictate server over a WebSocket, so the
 streaming, cancelling and status handling are the same everywhere.
@@ -62,7 +63,7 @@ def describe(cfg: Any) -> str:
         names = [p.name for p in (speech, cleanup) if p]
         return "Online: " + " + ".join(dict.fromkeys(names)) if names else "Online"
     if mode == "local":
-        return "This computer's graphics card"
+        return "This computer's processor" if cfg.client.local_device == "cpu" else "This computer's graphics card"
     host = urlsplit(cfg.client.server).hostname or ""
     return f"PC: {host.split('.')[0]}" if host not in LOCAL else "This PC"
 
@@ -98,5 +99,5 @@ def _start_local(cfg: Any) -> Session:
     from dictate.config import ensure_server_token
 
     token = ensure_server_token(cfg)  # written to the settings file, where the server reads it
-    server = local_gpu.LocalServer(cfg.server.port)
+    server = local_gpu.LocalServer(cfg.server.port, cfg.client.local_device)
     return Session(f"ws://127.0.0.1:{cfg.server.port}", token, [], describe(cfg), [server.stop])

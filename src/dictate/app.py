@@ -5,6 +5,7 @@ start-at-login and says how to use Dictate:
 
   - a PC that shares Dictate with you: paste its link (the same link the phone uses)
   - this computer's NVIDIA graphics card (Windows): downloads the engine and models once (~6 GB)
+  - this computer's processor (Windows, any PC): a smaller engine, ~1.5 GB, no graphics card needed
   - an online AI service (OpenAI, Claude, Gemini, Grok): paste an API key
 
 After that it just runs, with its tray / menu-bar icon; "Change how Dictate works…" in the menu goes
@@ -190,11 +191,11 @@ def _setup_online(cfg: Any) -> bool:
 
 
 # -- this computer's graphics card --------------------------------------------------------------------
-def _install_local(title: str) -> bool:
+def _install_local(title: str, device: str = "gpu") -> bool:
     from dictate import local_gpu
 
     try:
-        dialogs.progress(title, local_gpu.install)
+        dialogs.progress(title, lambda report: local_gpu.install(report, device))
         return True
     except Exception as e:
         log.exception("local setup failed")
@@ -235,20 +236,57 @@ def _setup_local(cfg: Any) -> bool:
         return False
     if not _install_local("Setting up Dictate"):
         return False
+    set_value(cfg.source_path, "client", "local_device", "gpu")
+    set_value(cfg.source_path, "client", "mode", "local")
+    return True
+
+
+def _setup_cpu(cfg: Any) -> bool:
+    """This computer's processor: for any PC, with no graphics card needed (a ThinkPad, a laptop with
+    integrated graphics)."""
+    from dictate import local_gpu
+    from dictate.config import set_value
+
+    choice = dialogs.message(
+        "Download the speech engine",
+        "Dictate will download about 1.5 GB (Python, the speech recognition and a small AI cleanup model) "
+        f"and keep them in {local_gpu.runtime_dir()}.\n\n"
+        "It takes 5 to 15 minutes, depending on your connection. After that Dictate works without the "
+        "internet, and nothing you say leaves this computer.\n\n"
+        "It runs on the processor, so your text takes about a second longer to appear than with a "
+        "graphics card or an online service, and the computer works harder while you dictate.",
+        ("Cancel", "Download"),
+    )
+    if choice != "Download":
+        return False
+    if not _install_local("Setting up Dictate", "cpu"):
+        return False
+    set_value(cfg.source_path, "client", "local_device", "cpu")  # (only once it's set up: see config.py)
     set_value(cfg.source_path, "client", "mode", "local")
     return True
 
 
 # -- choosing ---------------------------------------------------------------------------------------
+def mode_options(gpu: tuple[str, int] | None, cpu: bool) -> list[tuple[str, str]]:
+    """The choices for "Where should your speech be turned into text?" on this computer."""
+    options = [("remote", "A PC that shares Dictate with me (I have a link)")]
+    if gpu is not None:
+        options.append(("local", f"This computer's graphics card ({gpu[0]}): free and private, a 6 GB download"))
+    if cpu:
+        options.append((
+            "cpu",
+            "This computer's processor: free and private, a 1.5 GB download, works on any PC"
+            + (" (slower than the graphics card)" if gpu is not None else ""),
+        ))  # fmt: skip
+    options.append(("online", "An online AI service (OpenAI, Claude, Gemini or Grok), with my own API key"))
+    return options
+
+
 def choose_mode(cfg: Any) -> bool:
     """Ask where the speech recognition should run and set it up. True if something was set up."""
     from dictate import local_gpu
 
-    options = [("remote", "A PC that shares Dictate with me (I have a link)")]
-    gpu = local_gpu.available()
-    if gpu is not None:
-        options.append(("local", f"This computer's graphics card ({gpu[0]}): free and private, a 6 GB download"))
-    options.append(("online", "An online AI service (OpenAI, Claude, Gemini or Grok), with my own API key"))
+    options = mode_options(local_gpu.available(), local_gpu.cpu_available())
     while True:
         mode = dialogs.choose(
             "Set up Dictate",
@@ -257,7 +295,7 @@ def choose_mode(cfg: Any) -> bool:
         )
         if mode is None:
             return False
-        done = {"remote": _setup_remote, "local": _setup_local, "online": _setup_online}[mode](cfg)
+        done = {"remote": _setup_remote, "local": _setup_local, "cpu": _setup_cpu, "online": _setup_online}[mode](cfg)
         if done:
             return True
 
@@ -386,7 +424,11 @@ def main(argv: list[str] | None = None) -> None:
             autostart.enable("client")
         except Exception:
             log.exception("could not turn on start-at-login")
-    elif cfg.client.mode == "local" and not local_gpu.installed() and not _install_local("Updating Dictate"):
+    elif (
+        cfg.client.mode == "local"
+        and not local_gpu.ready(cfg)
+        and not _install_local("Updating Dictate", cfg.client.local_device)
+    ):
         return  # (a new version of the app brings its engine up to date first)
 
     try:

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
 import re
 import secrets
 import sys
@@ -90,6 +91,7 @@ class ClientConfig:
     double_tap_window_ms: int = 400
     restore_clipboard: bool = True
     restore_delay_ms: int = 400
+    local_device: str = "gpu"  # mode "local": "gpu" (an NVIDIA card) or "cpu" (the processor, any PC)
     live: bool = False  # type as you speak: each sentence appears once it's final, not all at the end
     indicator: bool = True  # the "Recording" badge on screen while Dictate listens
 
@@ -157,6 +159,7 @@ class GuardrailConfig:
 
 @dataclass
 class LLMConfig:
+    build: str = "cuda"  # which llama.cpp: "cuda" (NVIDIA) or "cpu"
     gpu_layers: int = 99
     context: int = 4096
     port: int = 0
@@ -357,6 +360,10 @@ def _validate(cfg: Config) -> None:
         raise ConfigError("[cleanup] backend must be 'llama-server', 'ollama' or 'cloud'")
     if cfg.cleanup.math_style not in ("unicode", "ascii"):
         raise ConfigError("[cleanup] math_style must be 'unicode' or 'ascii'")
+    if cfg.client.local_device not in ("gpu", "cpu"):
+        raise ConfigError(f"[client] local_device must be 'gpu' or 'cpu', got {cfg.client.local_device!r}")
+    if cfg.llm.build not in ("cuda", "cpu"):
+        raise ConfigError(f"[llm] build must be 'cuda' or 'cpu', got {cfg.llm.build!r}")
     if cfg.llm.speculative not in ("ngram", "none"):
         raise ConfigError("[llm] speculative must be 'ngram' or 'none'")
     if not 0 < cfg.guardrails.min_ratio < cfg.guardrails.max_ratio:
@@ -386,6 +393,9 @@ def parse_config(text: str, source_path: Path | None = None) -> Config:
         if key not in {*_SECTIONS, "commands", "models_dir"}:
             log.warning("config: unknown section [%s] (ignored)", key)
 
+    if local_device(cfg) == "cpu":
+        _processor_only(cfg, data)
+
     # The short [server] keys drive the engine.
     cfg.cleanup.enabled = cfg.cleanup.enabled and cfg.server.cleanup
     if cfg.server.model:
@@ -394,6 +404,38 @@ def parse_config(text: str, source_path: Path | None = None) -> Config:
     cfg.asr.language = cfg.client.language
     _validate(cfg)
     return cfg
+
+
+CPU_CLEANUP_MODEL = "qwen3.5-0.8b"  # ~1 s per sentence on a laptop processor (Gemma: ~2-3 s)
+
+
+def local_device(cfg: Config) -> str:
+    """Where this computer's own engine runs: "gpu" or "cpu". The app's runtime is started with
+    DICTATE_LOCAL_DEVICE, so the variant being installed or run wins over the settings file (which
+    only says "cpu" once that variant has been set up)."""
+    return os.environ.get("DICTATE_LOCAL_DEVICE") or cfg.client.local_device
+
+
+def _processor_only(cfg: Config, data: dict[str, Any]) -> None:
+    """The engine on the processor alone, for PCs without an NVIDIA card: the int8 speech model (about
+    0.1-0.4 s per phrase on a laptop), llama.cpp's processor build and a small cleanup model. Anything
+    set explicitly in the settings file stays as it is."""
+
+    def unset(section: str, key: str) -> bool:
+        return key not in data.get(section, {})
+
+    if unset("asr", "device"):
+        cfg.asr.device = "cpu"
+    if unset("asr", "quantization"):
+        cfg.asr.quantization = "int8"
+    if unset("llm", "build"):
+        cfg.llm.build = "cpu"
+    if unset("llm", "gpu_layers"):
+        cfg.llm.gpu_layers = 0
+    if unset("cleanup", "model") and unset("server", "model"):
+        cfg.cleanup.model = cfg.server.model = CPU_CLEANUP_MODEL  # ([server] model is applied after this)
+    if unset("cleanup", "timeout_ms"):
+        cfg.cleanup.timeout_ms = 4000  # a slower laptop still gets its cleanup; past this, the rules
 
 
 def ensure_config_file(path: Path | None = None) -> Path:

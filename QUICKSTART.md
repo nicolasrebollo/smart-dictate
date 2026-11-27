@@ -9,6 +9,9 @@ Dictate needs somewhere to turn your speech into text. When you first open it, i
   voice only goes to that PC.
 - **This computer's graphics card** (Windows with an NVIDIA card only; Dictate only offers it if you
   have one). Free and private: nothing leaves your computer. It downloads about 6 GB once.
+- **This computer's processor** (any Windows PC, for example a ThinkPad or a laptop without a gaming
+  graphics card). Free and private: nothing leaves your computer. It downloads about 1.3 GB once.
+  Your text takes about a second longer to appear than with the other choices.
 - **An online AI service**: OpenAI, Anthropic (Claude), Google (Gemini) or xAI (Grok). You need an
   **API key** from that service (an account with a payment method or credit; usually a few cents per
   hour of dictation). Your recordings are sent to that service.
@@ -72,6 +75,15 @@ open Dictate again and choose the same thing: it picks up where it stopped.
 
 **Then:** Dictate says it's ready. Hold **Right Ctrl** (Windows) or **Right Option ⌥** (Mac),
 speak, and let go.
+
+### This computer's processor
+
+Click **Download**. A window shows the progress (5 to 15 minutes, depending on your connection). As
+above, if it stops, open Dictate again and choose the same thing: it picks up where it stopped.
+
+**Then:** Dictate says it's ready. Hold **Right Ctrl**, speak, and let go. Your text appears a moment
+after you let go; with **Type as I speak** on (in the menu), it appears sentence by sentence while you
+keep talking, so you hardly wait at all.
 
 ## 3. The phone (only with a PC that shares Dictate)
 

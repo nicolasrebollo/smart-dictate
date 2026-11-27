@@ -93,17 +93,38 @@ LLM_MODELS: dict[str, LLMModel] = {
     ),
 }
 
-# Official llama.cpp Windows CUDA 13 build (CUDA runtime DLLs come from the nvidia-* pip wheels).
+# Official llama.cpp Windows builds, hash-pinned ([llm] build picks one):
+#   cuda  NVIDIA graphics cards (CUDA 13; its runtime DLLs come from the nvidia-* pip wheels)
+#   cpu   the processor only, for any PC (it picks the fastest code for the processor it runs on)
 LLAMA_CPP_BUILD = "b12670"
-LLAMA_CPP_URL = (
-    f"https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_CPP_BUILD}/"
-    f"llama-{LLAMA_CPP_BUILD}-bin-win-cuda-13.5-x64.zip"
-)
-LLAMA_CPP_SHA256 = "089a40c166e08794127ed815a1500e17821cb665dd39a120d369e02675ac7b44"
+_RELEASES = f"https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_CPP_BUILD}"
+
+
+@dataclass(frozen=True)
+class LlamaCppBuild:
+    url: str
+    sha256: str
+    folder: str
+
+
+LLAMA_CPP_BUILDS = {
+    "cuda": LlamaCppBuild(
+        f"{_RELEASES}/llama-{LLAMA_CPP_BUILD}-bin-win-cuda-13.5-x64.zip",
+        "089a40c166e08794127ed815a1500e17821cb665dd39a120d369e02675ac7b44",
+        f"{LLAMA_CPP_BUILD}-cuda13",
+    ),
+    "cpu": LlamaCppBuild(
+        f"{_RELEASES}/llama-{LLAMA_CPP_BUILD}-bin-win-cpu-x64.zip",
+        "935720ef3c4f6b55b5adeeed5e4dfa1a54abd61118eefeffea456a6d6db671b3",
+        f"{LLAMA_CPP_BUILD}-cpu",
+    ),
+}
+LLAMA_CPP_URL, LLAMA_CPP_SHA256 = LLAMA_CPP_BUILDS["cuda"].url, LLAMA_CPP_BUILDS["cuda"].sha256
 
 
 def llama_server_exe(cfg: Config) -> Path:
-    return cfg.models_dir / "llama.cpp" / f"{LLAMA_CPP_BUILD}-cuda13" / "llama-server.exe"
+    build = LLAMA_CPP_BUILDS[cfg.llm.build]
+    return cfg.models_dir / "llama.cpp" / build.folder / "llama-server.exe"
 
 
 def llm_path(cfg: Config, name: str | None = None) -> Path:
@@ -203,15 +224,16 @@ def download_llama_cpp(cfg: Config) -> Path:
     import zipfile
 
     exe = llama_server_exe(cfg)
+    build = LLAMA_CPP_BUILDS[cfg.llm.build]
     if exe.is_file():
-        print(f"  llama.cpp {LLAMA_CPP_BUILD}: already present")
+        print(f"  llama.cpp {LLAMA_CPP_BUILD} ({cfg.llm.build}): already present")
         return exe
     exe.parent.mkdir(parents=True, exist_ok=True)
     tmp = exe.parent.with_suffix(".zip.part")
-    print(f"  llama.cpp {LLAMA_CPP_BUILD}: downloading {LLAMA_CPP_URL}")
-    _download(LLAMA_CPP_URL, tmp)
+    print(f"  llama.cpp {LLAMA_CPP_BUILD} ({cfg.llm.build}): downloading {build.url}")
+    _download(build.url, tmp)
     digest = _sha256(tmp)
-    if digest != LLAMA_CPP_SHA256:
+    if digest != build.sha256:
         tmp.unlink(missing_ok=True)
         raise RuntimeError(f"llama.cpp checksum mismatch ({digest}); refusing to install")
     with zipfile.ZipFile(tmp) as z:

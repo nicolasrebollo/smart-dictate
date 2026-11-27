@@ -2,17 +2,21 @@ version = 1
 revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
-    "sys_platform != 'win32' and extra != 'extra-7-dictate-cloud' and extra == 'extra-7-dictate-server'",
-    "sys_platform == 'win32' and extra != 'extra-7-dictate-cloud' and extra == 'extra-7-dictate-server'",
+    "sys_platform != 'win32' and extra != 'extra-7-dictate-cloud' and extra != 'extra-7-dictate-cpu' and extra == 'extra-7-dictate-server'",
+    "sys_platform == 'win32' and extra != 'extra-7-dictate-cloud' and extra != 'extra-7-dictate-cpu' and extra == 'extra-7-dictate-server'",
     "sys_platform == 'darwin' and extra == 'extra-7-dictate-cloud' and extra != 'extra-7-dictate-server'",
     "sys_platform != 'darwin' and extra == 'extra-7-dictate-cloud' and extra != 'extra-7-dictate-server'",
-    "extra != 'extra-7-dictate-cloud' and extra != 'extra-7-dictate-server'",
+    "sys_platform == 'darwin' and extra != 'extra-7-dictate-cloud' and extra != 'extra-7-dictate-server'",
+    "sys_platform != 'darwin' and extra != 'extra-7-dictate-cloud' and extra != 'extra-7-dictate-server'",
 ]
 required-markers = [
     "platform_machine == 'AMD64' and sys_platform == 'win32'",
 ]
 conflicts = [[
     { package = "dictate", extra = "cloud" },
+    { package = "dictate", extra = "server" },
+], [
+    { package = "dictate", extra = "cpu" },
     { package = "dictate", extra = "server" },
 ]]
 
@@ -186,7 +190,7 @@ name = "cryptography"
 version = "50.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cffi", marker = "platform_python_implementation != 'PyPy' or (extra == 'extra-7-dictate-cloud' and extra == 'extra-7-dictate-server')" },
+    { name = "cffi", marker = "platform_python_implementation != 'PyPy' or (extra == 'extra-7-dictate-cloud' or extra == 'extra-7-dictate-cpu') and extra == 'extra-7-dictate-server'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9d/af/182eb91b0df3fe75c4d9f26fe70684569566745f6ba7e5c9c73a862c5252/cryptography-50.0.2.tar.gz", hash = "sha256:7b46165bb56eb4704e2eaaf86f3c940d19154535d9b0ca7d6d590b04060e00d5", size = 880623, upload-time = "2026-09-30T15:30:04.884Z" }
 wheels = [
@@ -238,7 +242,7 @@ wheels = [
 
 [[package]]
 name = "dictate"
-version = "0.5.1"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -261,10 +265,17 @@ cloud = [
     { name = "onnxruntime" },
     { name = "rapidfuzz" },
 ]
+cpu = [
+    { name = "numpy" },
+    { name = "onnx-asr", extra = ["hub"], marker = "extra == 'extra-7-dictate-cloud' or extra == 'extra-7-dictate-cpu' or extra != 'extra-7-dictate-server'" },
+    { name = "onnxruntime" },
+    { name = "rapidfuzz" },
+    { name = "soundfile" },
+]
 server = [
     { name = "numpy" },
-    { name = "onnx-asr", extra = ["gpu", "hub"], marker = "(sys_platform == 'linux' or sys_platform == 'win32' or extra == 'extra-7-dictate-cloud') and extra == 'extra-7-dictate-server'" },
-    { name = "onnxruntime-gpu", extra = ["cuda", "cudnn"], marker = "(sys_platform == 'linux' or sys_platform == 'win32' or extra == 'extra-7-dictate-cloud') and extra == 'extra-7-dictate-server'" },
+    { name = "onnx-asr", extra = ["gpu", "hub"], marker = "(sys_platform == 'linux' or sys_platform == 'win32' or extra == 'extra-7-dictate-cloud' or extra == 'extra-7-dictate-cpu') and extra == 'extra-7-dictate-server'" },
+    { name = "onnxruntime-gpu", extra = ["cuda", "cudnn"], marker = "(sys_platform == 'linux' or sys_platform == 'win32' or extra == 'extra-7-dictate-cloud' or extra == 'extra-7-dictate-cpu') and extra == 'extra-7-dictate-server'" },
     { name = "rapidfuzz" },
     { name = "soundfile" },
 ]
@@ -284,10 +295,14 @@ requires-dist = [
     { name = "anthropic", specifier = ">=2.14" },
     { name = "keyring", specifier = ">=25" },
     { name = "numpy", marker = "extra == 'cloud'", specifier = ">=2" },
+    { name = "numpy", marker = "extra == 'cpu'", specifier = ">=2" },
     { name = "numpy", marker = "extra == 'server'", specifier = ">=2" },
     { name = "onnx-asr", extras = ["gpu", "hub"], marker = "(sys_platform == 'linux' or sys_platform == 'win32') and extra == 'server'", specifier = ">=0.12" },
+    { name = "onnx-asr", extras = ["hub"], marker = "extra == 'cpu'", specifier = ">=0.12" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin' and extra == 'cloud'", specifier = ">=1.23,<1.24" },
+    { name = "onnxruntime", marker = "sys_platform == 'darwin' and extra == 'cpu'", specifier = ">=1.23,<1.24" },
     { name = "onnxruntime", marker = "extra == 'cloud'", specifier = ">=1.23" },
+    { name = "onnxruntime", marker = "extra == 'cpu'", specifier = ">=1.23" },
     { name = "onnxruntime-gpu", extras = ["cuda", "cudnn"], marker = "(sys_platform == 'linux' or sys_platform == 'win32') and extra == 'server'", specifier = ">=1.32.0" },
     { name = "pillow", specifier = ">=11" },
     { name = "platformdirs", specifier = ">=4" },
@@ -297,13 +312,15 @@ requires-dist = [
     { name = "pyobjc-framework-screencapturekit", marker = "sys_platform == 'darwin'", specifier = ">=10" },
     { name = "pystray", specifier = ">=0.19" },
     { name = "rapidfuzz", marker = "extra == 'cloud'", specifier = ">=3" },
+    { name = "rapidfuzz", marker = "extra == 'cpu'", specifier = ">=3" },
     { name = "rapidfuzz", marker = "extra == 'server'", specifier = ">=3" },
     { name = "sounddevice", specifier = ">=0.5" },
+    { name = "soundfile", marker = "extra == 'cpu'", specifier = ">=0.13" },
     { name = "soundfile", marker = "extra == 'server'", specifier = ">=0.13" },
     { name = "truststore", specifier = ">=0.10" },
     { name = "websockets", specifier = ">=15" },
 ]
-provides-extras = ["cloud", "server"]
+provides-extras = ["cloud", "server", "cpu"]
 
 [package.metadata.requires-dev]
 build = [{ name = "pyinstaller", specifier = ">=6.11" }]
@@ -808,8 +825,8 @@ name = "nvidia-cudnn-cu13"
 version = "9.28.1.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas", version = "13.10.0.20", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'win32' or extra == 'extra-7-dictate-cloud') and extra == 'extra-7-dictate-server'" },
-    { name = "nvidia-cublas", version = "13.10.1.6", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform != 'win32' or extra == 'extra-7-dictate-cloud') and extra == 'extra-7-dictate-server'" },
+    { name = "nvidia-cublas", version = "13.10.0.20", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'win32' or extra == 'extra-7-dictate-cloud' or extra == 'extra-7-dictate-cpu') and extra == 'extra-7-dictate-server'" },
+    { name = "nvidia-cublas", version = "13.10.1.6", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform != 'win32' or extra == 'extra-7-dictate-cloud' or extra == 'extra-7-dictate-cpu') and extra == 'extra-7-dictate-server'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/08/b2/e50ec98e7d746d194aafab84dfb5a49b29ba1934441ddc613833ea0bdac7/nvidia_cudnn_cu13-9.28.1.4-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:759b6a4919951ed8ec603dec97b96f6a6396c8269b95b3d345526e2471fb433d", size = 597008823, upload-time = "2026-11-06T21:49:26.555Z" },
@@ -1264,10 +1281,8 @@ name = "pynput"
 version = "1.8.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "evdev", marker = "'linux' in sys_platform or (extra == 'extra-7-dictate-cloud' and extra == 'extra-7-dictate-server')" },
-    { name = "pyobjc-framework-applicationservices", marker = "extra == 'extra-7-dictate-cloud' and extra == 'extra-7-dictate-server'" },
-    { name = "pyobjc-framework-quartz", marker = "extra == 'extra-7-dictate-cloud' and extra == 'extra-7-dictate-server'" },
-    { name = "python-xlib", marker = "'linux' in sys_platform or (extra == 'extra-7-dictate-cloud' and extra == 'extra-7-dictate-server')" },
+    { name = "evdev", marker = "'linux' in sys_platform or (extra == 'extra-7-dictate-cloud' or extra == 'extra-7-dictate-cpu') and extra == 'extra-7-dictate-server'" },
+    { name = "python-xlib", marker = "'linux' in sys_platform or (extra == 'extra-7-dictate-cloud' or extra == 'extra-7-dictate-cpu') and extra == 'extra-7-dictate-server'" },
     { name = "six" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/86/c6/e2d415610cfbc78308bee44218a46124aaa3301b1df08814df819b2254a1/pynput-1.8.2.tar.gz", hash = "sha256:f493c87157cd3861b4468f7f896857051762f44ed26f1b641e7cc5840a457087", size = 82818, upload-time = "2026-05-12T19:11:39.464Z" }
