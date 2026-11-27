@@ -111,7 +111,7 @@ Everything is in Dictate's **microphone icon**:
 | **Notes…** | opens your notes (see below) |
 | **Language** | English, Español, Français |
 | **Hotkey** | the key you hold. Windows: Right Ctrl or Right Alt (useful if your keyboard has no Right Ctrl). Mac: Right Option, Right Command or Fn (for Fn, also set System Settings › Keyboard › "Press 🌐 key to" to **Do Nothing**). |
-| **Microphone** | which microphone to use. "Same as the system" follows your computer's sound settings. |
+| **Microphone** | which microphone to use. "Same as the system" follows your computer's sound settings. **Computer audio (what's playing)** transcribes what's coming out of your speakers instead, like a video or a call (see below). |
 | **Sounds** | the small beeps when it starts and stops listening |
 | **Start when I log in** | ticked: Dictate starts by itself when you log in (it's on after setup) |
 | **Change how Dictate works…** | pick a different option from step 2, paste a new link, or enter a new API key. Dictate restarts with the new setup. |
@@ -128,6 +128,19 @@ hotkey, and other apps can use the microphone at the same time.
 
 **The icon's colors:** white = ready, red = listening, amber = working, dim = turned off, grey with
 a red line = can't reach the PC or the online service (open the menu: the first line says why).
+
+### Transcribing a video or a call
+
+Choose **Microphone › Computer audio (what's playing)** in the menu. Now the hotkey listens to your
+computer instead of to you: click where the text should go (a note, a document), then hold the hotkey
+while the video or call plays, or double-tap it to go hands-free and tap once more to stop. The text
+appears when you stop. On a call it hears the other people, not you. Words like "comma" or "new
+paragraph" in the video stay words. Choose your microphone again under **Microphone** to go back to
+dictating.
+
+- **Mac:** the first time, macOS asks to let Dictate record your screen and system audio. Dictate
+  only uses the sound. Allow it in System Settings › Privacy & Security › **Screen & System Audio
+  Recording**, then quit and reopen Dictate.
 
 ## 6. Notes
 

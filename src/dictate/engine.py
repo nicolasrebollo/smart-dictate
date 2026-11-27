@@ -88,8 +88,10 @@ class Engine:
             if self._keep_warm is not None:
                 (self._keep_warm.start if self._active > 0 else self._keep_warm.stop)()
 
-    def session(self, language: str = "en") -> EngineSession:
-        return EngineSession(self, language if language in LANGUAGES else "en")
+    def session(self, language: str = "en", source: str = "mic") -> EngineSession:
+        """source "computer": the audio is what's playing on the computer (a video, a call), not someone
+        dictating, so spoken commands ("new paragraph", "scratch that", "comma") stay words."""
+        return EngineSession(self, language if language in LANGUAGES else "en", source)
 
     def close(self) -> None:
         if self.llm is not None:
@@ -97,10 +99,12 @@ class Engine:
 
 
 class EngineSession:
-    def __init__(self, engine: Engine, language: str) -> None:
+    def __init__(self, engine: Engine, language: str, source: str = "mic") -> None:
         self.engine = engine
         cfg = copy.deepcopy(engine.cfg)
         cfg.asr.language = language
+        if source == "computer":
+            cfg.commands.enabled = False
         cleaner = Cleaner(engine.llm, cfg) if engine.llm is not None else None
         self.pipeline = Pipeline(cfg, engine.asr, cleaner)
         self.incremental: IncrementalCleaner | None = self.pipeline.new_incremental()

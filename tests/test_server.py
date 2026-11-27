@@ -19,8 +19,8 @@ TOKEN = "test-token-123"
 
 
 class FakeSession:
-    def __init__(self, engine, language):
-        self.engine, self.language, self.bytes = engine, language, 0
+    def __init__(self, engine, language, source="mic"):
+        self.engine, self.language, self.source, self.bytes = engine, language, source, 0
         engine.sessions.append(self)
         self.cancelled = False
 
@@ -39,8 +39,8 @@ class FakeEngine:
     def __init__(self):
         self.sessions = []
 
-    def session(self, language="en"):
-        return FakeSession(self, language)
+    def session(self, language="en", source="mic"):
+        return FakeSession(self, language, source)
 
 
 @pytest.fixture(scope="module")

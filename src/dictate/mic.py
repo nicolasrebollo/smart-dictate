@@ -6,6 +6,9 @@ Two modes ([client] keep_mic_open):
                       its "microphone in use" indicator constantly (orange dot on macOS)
   open while talking  the mic (and the indicator) is only on while you hold the key; the mic needs
                       ~0.1 s to start, so the very start of the first word can occasionally be clipped
+
+input_device = "computer audio" records what's playing on the computer instead (system_audio.py). It's
+only on while you hold the key (there's no first syllable to protect).
 """
 
 from __future__ import annotations
@@ -21,6 +24,8 @@ from typing import Any
 
 import sounddevice as sd
 
+from dictate import system_audio
+
 log = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16_000
@@ -28,8 +33,9 @@ BLOCK = 640  # 40 ms
 
 
 def resolve_device(spec: str | int) -> int | None:
-    """'' -> default device; int -> index; str -> first input device whose name contains it."""
-    if spec == "" or spec is None:
+    """'' -> default device; int -> index; str -> first input device whose name contains it.
+    ("computer audio" isn't a device: see Mic.)"""
+    if spec == "" or spec is None or system_audio.is_system(spec):
         return None
     if isinstance(spec, int):
         return spec
@@ -93,6 +99,7 @@ class Mic:
 
     def __init__(self, device: str | int = "", preroll_ms: int = 300, *, keep_open: bool = True) -> None:
         self._device = resolve_device(device)
+        self.system = system_audio.is_system(device)  # the computer's audio, not a microphone
         self.keep_open = keep_open
         self._preroll: collections.deque[bytes] = collections.deque(
             maxlen=max(1, round(preroll_ms * SAMPLE_RATE / 1000 / BLOCK))
@@ -100,12 +107,21 @@ class Mic:
         self._sink: Callable[[bytes], None] | None = None
         self._lock = threading.Lock()  # protects _sink / _preroll
         self._stream_lock = threading.Lock()  # protects opening / closing the stream
-        self._stream: sd.RawInputStream | None = None
+        self._stream: Any = None  # sd.RawInputStream, or a system_audio capture
         self.name = ""
+        self.on_error: Callable[[str], None] | None = None  # told when computer audio can't start
+
+    @property
+    def _keep(self) -> bool:
+        return self.keep_open and not self.system
 
     def _start_stream(self) -> None:
         with self._stream_lock:
             if self._stream is not None:
+                return
+            if self.system:
+                self._stream = system_audio.open_capture(self._from_system)
+                self.name = system_audio.LABEL
                 return
             stream = sd.RawInputStream(
                 samplerate=SAMPLE_RATE, channels=1, dtype="int16", blocksize=BLOCK, device=self._device,
@@ -123,7 +139,11 @@ class Mic:
             stream.close()
 
     def open(self) -> None:
-        if self.keep_open:
+        if self.system:
+            if not system_audio.available():
+                raise ValueError("capturing the computer's audio needs Windows, or macOS 13 or newer")
+            self.name = system_audio.LABEL
+        elif self.keep_open:
             self._start_stream()
         else:  # just check the device now, so a wrong setting shows up at startup
             dev = self._device if self._device is not None else sd.default.device[0]
@@ -133,12 +153,19 @@ class Mic:
         self._stop_stream()
 
     def set_device(self, spec: str | int) -> None:
-        """Switch microphones ('' = the system default). Raises ValueError if there's no such mic."""
+        """Switch microphones ('' = the system default, "computer audio" = what's playing). Raises
+        ValueError if there's no such mic."""
         device = resolve_device(spec)
+        system = system_audio.is_system(spec)
+        if system and not system_audio.available():
+            raise ValueError("capturing the computer's audio needs Windows, or macOS 13 or newer")
         was_open = self._stream is not None
         self._stop_stream()
         self._device = device
-        if was_open:
+        self.system = system
+        if system:
+            self.name = system_audio.LABEL
+        elif was_open or self.keep_open:
             self._start_stream()
         else:
             self.name = sd.query_devices(device if device is not None else sd.default.device[0])["name"]
@@ -146,7 +173,7 @@ class Mic:
     def request_access(self) -> None:
         """Open the mic for a moment, so macOS asks for microphone permission now rather than in the
         middle of the first dictation."""
-        if self._stream is not None:
+        if self._stream is not None or self.system:
             return
         try:
             self._start_stream()
@@ -154,8 +181,11 @@ class Mic:
         except Exception:
             log.debug("microphone access check failed", exc_info=True)
         finally:
-            if not self.keep_open:
+            if not self._keep:
                 self._stop_stream()
+
+    def _from_system(self, block: bytes) -> None:
+        self._callback(block, len(block) // 2, None, None)
 
     def _callback(self, indata: Any, frames: int, time_info: Any, status: sd.CallbackFlags) -> None:
         block = bytes(indata)  # little-endian int16 on every platform we support
@@ -173,14 +203,16 @@ class Mic:
                 sink(b)
             self._preroll.clear()
             self._sink = sink
-        if not self.keep_open:
+        if not self._keep:
             try:
                 self._start_stream()
-            except Exception:
+            except Exception as e:
                 log.exception("could not open the microphone")
+                if self.system and self.on_error is not None:
+                    self.on_error(str(e))
 
     def end(self) -> None:
         with self._lock:
             self._sink = None
-        if not self.keep_open:
+        if not self._keep:
             self._stop_stream()  # the OS "microphone in use" indicator goes away

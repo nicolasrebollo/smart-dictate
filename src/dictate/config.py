@@ -44,7 +44,7 @@ hands_free = true               # double-tap the hotkey to talk hands-free; tap 
 cancel = "esc"                  # discard the current recording
 raw_modifier = "shift"          # hold while releasing to skip the AI cleanup once
 language = "en"                 # en | es | fr (also switchable from the tray icon)
-input_device = ""               # "" = default microphone (`dictate devices` lists them)
+input_device = ""               # "" = default mic (`dictate devices` lists them); "computer audio" = what's playing
 keep_mic_open = {keep_mic}{keep_pad}# true: never clips your first word, but the OS shows "mic in use" all the time
 sounds = true
 

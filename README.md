@@ -106,7 +106,7 @@ turned off, grey with a red line = can't reach the speech recognition). Its menu
 | **Notes…** | your notes: folders, search by words, title, text or date (see below) |
 | **Language** | English, Spanish, French |
 | **Hotkey** | Right Ctrl / Right Alt on Windows; Right Option / Right Command / Fn on Mac |
-| **Microphone** | which mic, or the system's default |
+| **Microphone** | which mic, the system's default, or **Computer audio (what's playing)**: transcribe a video, a call or a podcast instead of your voice (see below) |
 | **Sounds** | start / stop beeps |
 | **Start when I log in** | autostart on or off (Windows: Task Manager › Startup apps; Mac: Login Items) |
 | **Change how Dictate works…** | switch between your GPU, a PC's link and an online service, or enter a new key or link |
@@ -118,6 +118,24 @@ Spoken punctuation works in Spanish and French too ("coma", "punto y aparte", "a
 "virgule", "point à la ligne", "point d'interrogation"). A command word you use as a normal word
 stays a word: "the trial period", "a new line of products", "the Oxford comma". The AI cleanup never
 answers or acts on what you dictate, and if its output looks wrong the plain transcript is used.
+
+### Transcribing what's playing (computer audio)
+
+Under **Microphone**, choose **Computer audio (what's playing)**. The hotkey then records what comes out
+of the speakers or headphones instead of your microphone: a YouTube video, the other people on a call,
+a podcast. Hold the key while it plays (or double-tap for hands-free, and tap again to stop), and the
+text appears at your cursor like a dictation. Click into a note first to collect it there.
+
+- Spoken commands are off for it: someone in a video saying "new paragraph" or "comma" stays words.
+- On a call it hears the other people, not you (your voice goes to the microphone, not the speakers).
+- Windows: it records whatever plays on the current speakers/headphones, with no setup. Your own
+  hotkey beeps are included; turn off **Sounds** if they get in the way.
+- Mac (macOS 13 or newer): the first time, macOS asks to let Dictate record the screen and system
+  audio (System Settings › Privacy & Security › **Screen & System Audio Recording**). Dictate only
+  takes the sound, and its own beeps are left out. Turn the permission on, then quit and reopen Dictate.
+- Switch back to your microphone under **Microphone** when you're done.
+
+In the settings file it's `input_device = "computer audio"`.
 
 ### Notes
 
@@ -203,6 +221,9 @@ half a second to two seconds, depending on the service and the model.
 - **Nothing happens on the Mac:** allow Dictate under Accessibility and Input Monitoring in System
   Settings › Privacy & Security. Check the icon isn't dim (turned off).
 - **Wrong microphone:** pick it under **Microphone** in the menu.
+- **"Can't hear the computer's audio"** (Computer audio): on a Mac, allow Dictate under System Settings ›
+  Privacy & Security › Screen & System Audio Recording, then quit and reopen it. On Windows, check that
+  speakers or headphones are connected and turned on.
 - **Logs:** `%LOCALAPPDATA%\dictate\logs` (Windows), `~/Library/Logs/dictate` (Mac). Local mode's
   setup and server log to `local-setup.log` and `local-server.log` there; the Notes window to `notes.log`.
 - **Local setup downloads slowly:** the models come from Hugging Face's servers at full speed (many

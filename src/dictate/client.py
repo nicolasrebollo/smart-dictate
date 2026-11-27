@@ -220,6 +220,7 @@ class Client:
         self.server = server or c.server
         self.conn = Connection(self.server, token if token is not None else c.token, self._connection_changed)
         self.mic = Mic(c.input_device, c.preroll_ms, keep_open=c.keep_mic_open)
+        self.mic.on_error = self._system_audio_failed
         self.recognizer = GestureRecognizer(
             tap_max_s=c.tap_max_ms / 1000, double_tap_window_s=c.double_tap_window_ms / 1000, hands_free=c.hands_free
         )
@@ -237,7 +238,14 @@ class Client:
 
     # -- state / tray ---------------------------------------------------------------------------
     def _ready_status(self) -> str:
+        if self.mic.system:
+            return f"Ready: hold {display_key(self.hotkey)} to transcribe what's playing"
         return f"Ready: hold {display_key(self.hotkey)} and speak"
+
+    def _system_audio_failed(self, message: str) -> None:
+        """Computer audio couldn't start (hotkey thread: never block it)."""
+        self._set_state("offline", f"Can't hear the computer's audio: {message}")
+        threading.Thread(target=self._tell, args=("Can't hear the computer's audio", message), daemon=True).start()
 
     def _set_state(self, state: str, status: str) -> None:
         if state == "ready" and self._blocked:
@@ -272,7 +280,7 @@ class Client:
                     from dictate.platform_win import mask_alt_menu
 
                     mask_alt_menu()  # releasing a lone Alt would otherwise open the app's menu bar
-            self._work.put(("start", self.language))
+            self._work.put(("start", self.language, "computer" if self.mic.system else "mic"))
             self.mic.begin(self._on_audio)
             self.sounds.play("start")
             self._set_state("listening", "Listening…")
@@ -296,7 +304,8 @@ class Client:
 
     def _on_audio(self, block: bytes) -> None:  # microphone thread: queue only
         self._work.put(("audio", block))
-        if not self._level_checked and len(self._level_buf) < 50:  # first 2 s of the first dictation
+        # the first 2 s of the first dictation (computer audio is silent whenever nothing plays: no check)
+        if not self._level_checked and not self.mic.system and len(self._level_buf) < 50:
             self._level_buf.append(block)
 
     # -- worker thread: network + paste ---------------------------------------------------------------
@@ -309,9 +318,10 @@ class Client:
                 return
             try:
                 if kind == "start":
-                    dropping = not (
-                        self.conn.ensure() and self.conn.send(json.dumps({"type": "start", "language": item[1]}))
-                    )
+                    start = {"type": "start", "language": item[1]}
+                    if item[2] == "computer":  # what's playing, not you: no spoken commands
+                        start["source"] = "computer"
+                    dropping = not (self.conn.ensure() and self.conn.send(json.dumps(start)))
                     if dropping:
                         self.sounds.play("error")
                 elif kind == "audio":
@@ -434,13 +444,17 @@ class Client:
         self._set_state(*self._ready_or_current())
 
     def microphones(self) -> list[str]:
+        """For the menu: "computer audio" (when this computer can), then the microphones by name."""
+        from dictate import system_audio
+
+        extra = [system_audio.DEVICE] if system_audio.available() else []
         try:
             from dictate.mic import microphone_names
 
-            return microphone_names()
+            return extra + microphone_names()
         except Exception:
             log.debug("could not list microphones", exc_info=True)
-            return []
+            return extra
 
     def microphone(self) -> str:
         return str(self.cfg.client.input_device)
@@ -454,6 +468,7 @@ class Client:
         self.cfg.client.input_device = name
         self._save("input_device", name)
         log.info("microphone: %s", self.mic.name)
+        self._set_state(*self._ready_or_current())  # "…and speak" / "…to transcribe what's playing"
 
     def autostart_on(self) -> bool:
         from dictate import autostart

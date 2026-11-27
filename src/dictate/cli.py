@@ -159,7 +159,8 @@ def cmd_devices(args: argparse.Namespace) -> None:
 
     for idx, name, is_default in list_input_devices():
         print(f"{'*' if is_default else ' '} {idx:3d}  {name}")
-    print("\n* = default. Set [client] input_device to a number or part of a name.")
+    print("\n* = default. Set [client] input_device to a number or part of a name,")
+    print('or to "computer audio" to transcribe what is playing on this computer instead.')
 
 
 def cmd_config(args: argparse.Namespace) -> None:

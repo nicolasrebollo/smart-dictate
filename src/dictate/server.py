@@ -2,6 +2,7 @@
 
 Protocol (WebSocket at /ws?token=...):
   client -> {"type": "start", "language": "en"}        begin a dictation
+              (+ "source": "computer" when it's the computer's own audio: no spoken commands)
   client -> binary frames                                16 kHz mono PCM16 little-endian, while speaking
   client -> {"type": "stop", "raw": false}               done: returns the result
   client -> {"type": "cancel"}                           discard
@@ -151,7 +152,7 @@ class DictateServer:
                 if kind == "start":
                     if session is not None:
                         session.cancel()
-                    session = self.engine.session(str(m.get("language", "en")))
+                    session = self.engine.session(str(m.get("language", "en")), str(m.get("source", "mic")))
                 elif kind == "stop" and session is not None:
                     s, session = session, None
                     t0 = time.perf_counter()

@@ -21,6 +21,7 @@ hidden = [
 ]
 if MAC:
     hidden += ["pystray._darwin", "PyObjCTools.AppHelper", "Quartz", "ApplicationServices", "AppKit",
+               "ScreenCaptureKit", "CoreMedia", "dictate.system_audio",
                "truststore._macos", "keyring.backends.macOS"]
 else:
     hidden += ["pystray._win32", "pynput.keyboard._win32", "pynput.mouse._win32", "truststore._windows",

@@ -14,6 +14,7 @@ from typing import Any, Protocol
 
 from PIL import Image, ImageDraw
 
+from dictate import system_audio
 from dictate.config import LANGUAGES
 from dictate.hotkeys import display_key
 
@@ -27,6 +28,7 @@ COLORS = {
     "off": (150, 150, 150, 150),
 }
 LANGUAGE_NAMES = {"en": "English", "es": "Español", "fr": "Français"}
+MIC_LABELS = {"": "Same as the system", system_audio.DEVICE: system_audio.LABEL}
 HOTKEYS = ["alt_r", "cmd_r", "fn"] if sys.platform == "darwin" else ["ctrl_r", "alt_r"]
 
 
@@ -124,7 +126,7 @@ class Tray:
         )  # fmt: skip
         mics = Menu(
             *(
-                Item(name or "Same as the system", later(lambda name=name: controls.set_microphone(name)),
+                Item(MIC_LABELS.get(name, name), later(lambda name=name: controls.set_microphone(name)),
                      checked=lambda _i, name=name: controls.microphone() == name, radio=True)
                 for name in ["", *controls.microphones()]
             )

@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import traceback
 from pathlib import Path
 
@@ -34,6 +35,7 @@ def _checks() -> dict[str, str]:
         import dictate.cloud.speech
         import dictate.engine
         import dictate.server
+        import dictate.system_audio
         import dictate.updates  # noqa: F401
 
         backend = type(keyring.get_keyring()).__name__
@@ -87,6 +89,25 @@ def _checks() -> dict[str, str]:
         tcl = tkinter.Tcl().eval("info patchlevel")  # the window's toolkit is in the app
         return f"sqlite {__import__('sqlite3').sqlite_version}, Tcl {tcl}, Tk {tkinter.TkVersion}"
 
+    def computer_audio() -> str:
+        from dictate import system_audio
+
+        if sys.platform == "darwin":
+            import CoreMedia  # noqa: F401
+            import ScreenCaptureKit  # noqa: F401
+
+            if not system_audio.available():
+                raise RuntimeError("ScreenCaptureKit isn't usable here")
+            system_audio._mac_output_class()  # the class that receives the audio can be made
+            return "ScreenCaptureKit ready (capturing needs the person's permission)"
+        try:
+            cap = system_audio.open_capture(lambda _block: None)
+        except RuntimeError as e:
+            return f"no speakers on this machine to listen to ({e})"
+        time.sleep(0.3)
+        cap.close()
+        return "loopback works"
+
     def dictation() -> str:
         from websockets.sync.client import connect
 
@@ -115,6 +136,7 @@ def _checks() -> dict[str, str]:
     check("certificates", tls)
     check("local mode bundle", local_bundle)
     check("notes", notes)
+    check("computer audio", computer_audio)
     check("online dictation", dictation)
     return results
 
