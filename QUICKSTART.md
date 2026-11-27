@@ -115,6 +115,7 @@ Everything is in Dictate's **microphone icon**:
 | **Sounds** | the small beeps when it starts and stops listening |
 | **Start when I log in** | ticked: Dictate starts by itself when you log in (it's on after setup) |
 | **Change how Dictate works…** | pick a different option from step 2, paste a new link, or enter a new API key. Dictate restarts with the new setup. |
+| **Check for updates…** | looks for a newer version of Dictate and installs it (see step 7) |
 | **Advanced settings…** | the settings file, for rare tweaks. You shouldn't need it. |
 | **Quit Dictate** | closes Dictate completely until you open it again (Start menu on Windows, Applications on Mac) or until you next log in |
 
@@ -153,10 +154,14 @@ online. To back them up, copy that file (with Notes closed). Uninstalling Dictat
 
 ## 7. Updating and uninstalling
 
-- **Update (Windows):** download the new **Dictate-Windows-Setup.exe** and run it. Your setup and
-  settings are kept. (With your own graphics card, Dictate updates its engine the next time it starts.)
-- **Update (Mac):** quit Dictate from its menu, drag the new Dictate into Applications and choose
-  **Replace**. macOS then forgets the permissions: in **System Settings › Privacy & Security**, under
+- **Update (Windows):** choose **Check for updates…** in Dictate's menu, then **Update now**. Dictate
+  downloads the new version, closes, updates itself and starts again (about a minute). Or download
+  the new **Dictate-Windows-Setup.exe** yourself and run it. Your setup, settings and notes are kept.
+  (With your own graphics card, Dictate updates its engine the next time it starts, in about a minute:
+  the 6 GB download isn't repeated.)
+- **Update (Mac):** choose **Check for updates…** in Dictate's menu, then **Download**: the new
+  version goes to your Downloads folder. Quit Dictate from its menu, open the download, drag Dictate
+  into Applications and choose **Replace**. macOS then forgets the permissions: in **System Settings › Privacy & Security**, under
   **Accessibility** and **Input Monitoring**, select Dictate, remove it with **–**, then open Dictate
   and allow it again.
 - **Uninstall (Windows):** **Settings › Apps › Installed apps › Dictate › Uninstall**. This also

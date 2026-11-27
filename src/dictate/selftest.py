@@ -33,7 +33,8 @@ def _checks() -> dict[str, str]:
         import dictate.cloud.claude
         import dictate.cloud.speech
         import dictate.engine
-        import dictate.server  # noqa: F401
+        import dictate.server
+        import dictate.updates  # noqa: F401
 
         backend = type(keyring.get_keyring()).__name__
         return f"onnxruntime {onnxruntime.__version__}, numpy {numpy.__version__}, " \

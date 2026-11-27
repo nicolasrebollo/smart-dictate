@@ -10,10 +10,13 @@ runtime dependencies do, and the acceptance check (Wi-Fi off) covers the rest.
 
 from __future__ import annotations
 
+import contextlib
 import ipaddress
 import os
 import socket
-from collections.abc import Iterable
+import threading
+from collections import Counter
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 OFFLINE_ENV = {
@@ -54,6 +57,33 @@ _original_connect = socket.socket.connect
 _original_connect_ex = socket.socket.connect_ex
 _original_getaddrinfo = socket.getaddrinfo
 _installed = False
+# Hosts allowed only for a moment (Check for updates: GitHub), and the addresses they resolved to.
+_temporary: Counter[str] = Counter()
+_temporary_resolved: set[str] = set()
+_temporary_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def allowing(*hosts: str) -> Iterator[None]:
+    """Let these hosts through the guard (if it's on) until the block ends; then they're refused again."""
+    names = [h.lower() for h in hosts]
+    with _temporary_lock:
+        _temporary.update(names)
+    try:
+        yield
+    finally:
+        with _temporary_lock:
+            _temporary.subtract(names)
+            for name in names:
+                if _temporary[name] <= 0:
+                    del _temporary[name]
+            if not _temporary:
+                _temporary_resolved.clear()
+
+
+def _temporarily_allowed() -> frozenset[str]:
+    with _temporary_lock:
+        return frozenset(_temporary)
 
 
 def install_network_guard(allow_hosts: Iterable[str] = ()) -> None:
@@ -67,7 +97,12 @@ def install_network_guard(allow_hosts: Iterable[str] = ()) -> None:
         if sock.family not in (socket.AF_INET, socket.AF_INET6):
             return  # AF_UNIX etc. are local by definition
         host = address[0] if isinstance(address, tuple) else address
-        if not _is_loopback_host(host, allowed) and str(host).lower() not in resolved:
+        name = str(host).lower()
+        if (
+            not _is_loopback_host(host, allowed | _temporarily_allowed())
+            and name not in resolved
+            and name not in _temporary_resolved
+        ):
             raise NetworkBlockedError(f"dictate: refused connection to {host!r} (not your server)")
 
     def guarded_connect(self: socket.socket, address: Any) -> None:
@@ -79,11 +114,16 @@ def install_network_guard(allow_hosts: Iterable[str] = ()) -> None:
         return _original_connect_ex(self, address)
 
     def guarded_getaddrinfo(host: Any, *args: Any, **kwargs: Any) -> Any:
-        if host is not None and not _is_loopback_host(host, allowed):
+        if host is not None and not _is_loopback_host(host, allowed | _temporarily_allowed()):
             raise NetworkBlockedError(f"dictate: refused DNS lookup of {host!r} (not your server)")
         result = _original_getaddrinfo(host, *args, **kwargs)
         if host is not None and not _is_loopback_host(host, frozenset()):
-            resolved.update(str(info[4][0]).lower() for info in result)
+            addresses = {str(info[4][0]).lower() for info in result}
+            if _is_loopback_host(host, allowed):
+                resolved.update(addresses)
+            else:  # allowed only for the moment: refused again once the moment is over
+                with _temporary_lock:
+                    _temporary_resolved.update(addresses)
         return result
 
     socket.socket.connect = guarded_connect  # type: ignore[method-assign]

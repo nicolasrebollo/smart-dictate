@@ -110,6 +110,7 @@ turned off, grey with a red line = can't reach the speech recognition). Its menu
 | **Sounds** | start / stop beeps |
 | **Start when I log in** | autostart on or off (Windows: Task Manager › Startup apps; Mac: Login Items) |
 | **Change how Dictate works…** | switch between your GPU, a PC's link and an online service, or enter a new key or link |
+| **Check for updates…** | asks GitHub for a newer version. Windows: downloads it, checks its checksum and installs it (Dictate restarts). Mac: downloads the .dmg and says what to do |
 | **Advanced settings…** | the settings file |
 | **Quit Dictate** | stop until you open it again or log in again |
 
@@ -147,8 +148,10 @@ requirements). A Mac app can only be built on a Mac, so GitHub builds all three:
    checked with `Dictate --self-test` (imports, the bundled speech detector, certificates, a whole
    dictation through the online-mode engine) before it's packaged.
 2. Or push a tag (`git tag -a v0.2.0 -m "Dictate 0.2.0"`, then `git push origin v0.2.0`): the files
-   are attached to a GitHub **Release**. Bump the version in `pyproject.toml` and
-   `src/dictate/__init__.py` first.
+   are attached to a GitHub **Release**. Bump the version in `pyproject.toml`, `uv.lock` (run
+   `uv lock`) and `src/dictate/__init__.py` first. **Check for updates…** in the app looks at the latest
+   Release of this repository (`REPO` in `src/dictate/updates.py`), so a published Release is what
+   people are offered. It needs each file's checksum, which GitHub adds to every Release file.
 
 To build the Windows app on your own PC (in a separate environment, since the app uses the CPU build
 of onnxruntime and the server the GPU build):
@@ -185,6 +188,9 @@ half a second to two seconds, depending on the service and the model.
   must present the token, and a built-in guard stops the server from connecting to the internet.
 - **Online:** your recordings and the text go to the service you chose, under its terms. Dictate
   connects to nothing else.
+- **Check for updates…** is the one exception, and only when you click it: it asks GitHub
+  (`api.github.com`) for the latest version and, if you say so, downloads it from there. It sends
+  nothing about you. Dictate never checks by itself, and GitHub is blocked again as soon as it's done.
 - Nothing is saved: no audio, no history. Your previous clipboard is restored after each paste.
   (Notes you write in **Notes…** are kept, in a file on your computer only.)
 
