@@ -213,7 +213,7 @@ class Client:
         self.enabled = True
         self._reconfigure = reconfigure
         self.can_reconfigure = reconfigure is not None  # the app: "Change how Dictate works…"
-        self.can_update = app  # the app: "Check for updates…" (a source checkout updates with git)
+        self.can_update = True  # "Check for updates…" (from source it says to `git pull`)
         self.can_change_server = mode == "client" and reconfigure is None and c.mode == "remote"
         self.inserter = make_inserter(cfg)
         self.sounds = Sounds(paths.data_dir() / "sounds", enabled=c.sounds, volume=c.volume)
