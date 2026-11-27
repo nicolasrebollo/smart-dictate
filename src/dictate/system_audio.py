@@ -75,10 +75,11 @@ def available() -> bool:
             return False
         if major < 13:
             return False
-        try:  # (both: a build that can't load CoreMedia would capture silence)
-            import CoreMedia  # noqa: F401
+        try:  # (both: without CoreMedia the capture would only ever hear silence)
             import ScreenCaptureKit  # noqa: F401
-        except ImportError:
+
+            _coremedia()
+        except (ImportError, OSError, AttributeError):
             log.warning("computer audio unavailable", exc_info=True)
             return False
         return True
@@ -264,10 +265,9 @@ class MacSystemAudio:
         cfg.setExcludesCurrentProcessAudio_(True)  # not Dictate's own beeps
         cfg.setWidth_(2)
         cfg.setHeight_(2)
-        with contextlib.suppress(Exception):
-            import CoreMedia
-
-            cfg.setMinimumFrameInterval_(CoreMedia.CMTimeMake(1, 1))  # one tiny frame a second
+        with contextlib.suppress(Exception):  # one tiny frame a second: a CMTime of 1/1 s (value, scale, valid, epoch)
+            cfg.setMinimumFrameInterval_((1, 1, 1, 0))
+        _register_sample_buffer()
         self._output = _mac_output_class().alloc().init()
         self._output.sink = self._audio
         stream = SCK.SCStream.alloc().initWithFilter_configuration_delegate_(filt, cfg, None)
@@ -371,20 +371,79 @@ def _mac_output_class() -> Any:
     return _OUTPUT_CLASS
 
 
+_CM: Any = None
+COREMEDIA = "/System/Library/Frameworks/CoreMedia.framework/CoreMedia"
+
+
+def _coremedia() -> Any:
+    """The three CoreMedia functions that get the audio out of a sample buffer, called directly. (PyObjC's
+    CoreMedia package isn't used: it needs a Swift library that older macOS versions don't fully have, and
+    the Mac app failed to start computer audio with "Symbol not found … libswiftCoreMedia.dylib".)"""
+    global _CM
+    if _CM is None:
+        import ctypes
+
+        cm = ctypes.CDLL(COREMEDIA)
+        cm.CMSampleBufferGetTypeID.argtypes = []
+        cm.CMSampleBufferGetTypeID.restype = ctypes.c_ulong
+        cm.CMSampleBufferGetDataBuffer.argtypes = [ctypes.c_void_p]
+        cm.CMSampleBufferGetDataBuffer.restype = ctypes.c_void_p
+        cm.CMBlockBufferGetDataLength.argtypes = [ctypes.c_void_p]
+        cm.CMBlockBufferGetDataLength.restype = ctypes.c_size_t
+        cm.CMBlockBufferCopyDataBytes.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_void_p]
+        cm.CMBlockBufferCopyDataBytes.restype = ctypes.c_int32
+        _CM = cm
+    return _CM
+
+
+_REGISTERED = False
+
+
+def _register_sample_buffer() -> None:
+    """Tell PyObjC what the CMSampleBufferRef that ScreenCaptureKit hands us is (PyObjC's CoreMedia
+    package would do this when imported; it isn't)."""
+    global _REGISTERED
+    if _REGISTERED:
+        return
+    import objc
+
+    try:
+        objc.registerCFSignature(
+            "CMSampleBufferRef", b"^{opaqueCMSampleBuffer=}", _coremedia().CMSampleBufferGetTypeID()
+        )
+    except Exception:
+        log.debug("registering CMSampleBufferRef as a CF type failed; using an opaque pointer", exc_info=True)
+        with contextlib.suppress(Exception):
+            objc.createOpaquePointerType("CMSampleBufferRef", b"^{opaqueCMSampleBuffer=}")
+    _REGISTERED = True
+
+
+def _address(obj: Any) -> int:
+    """The C pointer behind what PyObjC handed us (a CF object, or an opaque pointer)."""
+    if hasattr(obj, "__c_void_p__"):
+        return int(obj.__c_void_p__().value or 0)
+    pointer = getattr(obj, "__pointer__", None)
+    if isinstance(pointer, int):
+        return pointer
+    import objc
+
+    return int(objc.pyobjc_id(obj))
+
+
 def _mac_pcm16(buffer: Any) -> bytes:
     """A CMSampleBuffer of 32-bit float mono audio -> PCM16 bytes."""
-    import CoreMedia
+    import ctypes
 
-    block = CoreMedia.CMSampleBufferGetDataBuffer(buffer)
-    if block is None:
+    cm = _coremedia()
+    block = cm.CMSampleBufferGetDataBuffer(_address(buffer))
+    if not block:
         return b""
-    length = CoreMedia.CMBlockBufferGetDataLength(block)
-    got = CoreMedia.CMBlockBufferCopyDataBytes(block, 0, length, None)
-    raw = got[1] if isinstance(got, tuple) else got
-    if not isinstance(raw, bytes | bytearray | memoryview):
-        raw = bytes(raw)
+    length = cm.CMBlockBufferGetDataLength(block)
+    raw = ctypes.create_string_buffer(length)
+    if length == 0 or cm.CMBlockBufferCopyDataBytes(block, 0, length, raw) != 0:
+        return b""
     floats = array.array("f")
-    floats.frombytes(bytes(raw)[: len(raw) // 4 * 4])
+    floats.frombytes(raw.raw[: length // 4 * 4])
     return float_to_pcm16(floats)
 
 

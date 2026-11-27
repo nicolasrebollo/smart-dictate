@@ -152,3 +152,47 @@ def test_windows_loopback_delivers_steady_blocks() -> None:
     cap.close()
     assert got and {len(b) for b in got} == {BLOCK * 2}
     assert 0.3 <= sum(len(b) for b in got) / 2 / 16000 <= 0.8
+
+
+class _FakeCoreMedia:
+    """Stands in for CoreMedia's C functions: one sample buffer (at 1234) whose block buffer (at 99)
+    holds `floats`, as 32-bit float samples."""
+
+    def __init__(self, floats):
+        import struct
+
+        self.data = struct.pack(f"<{len(floats)}f", *floats)
+
+    def CMSampleBufferGetDataBuffer(self, sample_buffer):
+        return 99 if sample_buffer == 1234 else None
+
+    def CMBlockBufferGetDataLength(self, block):
+        return len(self.data)
+
+    def CMBlockBufferCopyDataBytes(self, block, offset, length, dest):
+        import ctypes
+
+        ctypes.memmove(dest, self.data[offset : offset + length], length)
+        return 0
+
+
+class _Opaque:
+    __pointer__ = 1234
+
+
+def test_mac_audio_buffers_become_pcm16(monkeypatch) -> None:
+    monkeypatch.setattr(system_audio, "_coremedia", lambda: _FakeCoreMedia([0.0, 0.5, -1.0, 1.5]))
+    pcm = system_audio._mac_pcm16(_Opaque())
+    values = [int.from_bytes(pcm[i : i + 2], "little", signed=True) for i in range(0, len(pcm), 2)]
+    assert values == [0, 16383, -32767, 32767]
+
+
+def test_mac_empty_or_missing_buffers_are_skipped(monkeypatch) -> None:
+    monkeypatch.setattr(system_audio, "_coremedia", lambda: _FakeCoreMedia([]))
+    assert system_audio._mac_pcm16(_Opaque()) == b""
+
+    class Elsewhere:
+        __pointer__ = 5
+
+    monkeypatch.setattr(system_audio, "_coremedia", lambda: _FakeCoreMedia([0.25]))
+    assert system_audio._mac_pcm16(Elsewhere()) == b""

@@ -93,11 +93,12 @@ def _checks() -> dict[str, str]:
         from dictate import system_audio
 
         if sys.platform == "darwin":
-            import CoreMedia  # noqa: F401
             import ScreenCaptureKit  # noqa: F401
 
+            system_audio._coremedia()  # the three CoreMedia functions that read the audio
             if not system_audio.available():
                 raise RuntimeError("ScreenCaptureKit isn't usable here")
+            system_audio._register_sample_buffer()  # PyObjC knows the buffers it will be handed
             system_audio._mac_output_class()  # the class that receives the audio can be made
             return "ScreenCaptureKit ready (capturing needs the person's permission)"
         try:
