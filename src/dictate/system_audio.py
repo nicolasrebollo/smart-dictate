@@ -75,9 +75,11 @@ def available() -> bool:
             return False
         if major < 13:
             return False
-        try:
+        try:  # (both: a build that can't load CoreMedia would capture silence)
+            import CoreMedia  # noqa: F401
             import ScreenCaptureKit  # noqa: F401
         except ImportError:
+            log.warning("computer audio unavailable", exc_info=True)
             return False
         return True
     return False

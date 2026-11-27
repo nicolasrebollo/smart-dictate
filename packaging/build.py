@@ -128,6 +128,32 @@ def windows_installer(app_dir: Path, out: Path) -> Path:
     return out
 
 
+SWIFT_LIBS = "/usr/lib/swift"
+
+
+def swift_rpath_fixes(app: Path, run=subprocess.run) -> list[Path]:
+    """Binaries in the app that link Apple's Swift libraries (`@rpath/libswift*.dylib`) without a way to
+    find them, after which they get one (returns them).
+
+    Those libraries are part of macOS (in /usr/lib/swift), never inside the app. PyInstaller points every
+    binary's search path at the app's own folders, so e.g. PyObjC's CoreMedia (computer audio) failed to
+    load: "tried …/Frameworks/CoreMedia/../libswiftCoreMedia.dylib (no such file)"."""
+    fixed = []
+    for folder, _dirs, files in os.walk(app):  # (doesn't follow the bundle's symlinks: each file once)
+        for name in files:
+            path = Path(folder) / name
+            if path.suffix not in (".so", ".dylib") or path.is_symlink():
+                continue
+            links = run(["otool", "-L", str(path)], capture_output=True, text=True).stdout
+            if "@rpath/libswift" not in links:
+                continue
+            commands = run(["otool", "-l", str(path)], capture_output=True, text=True).stdout
+            if f"path {SWIFT_LIBS} " not in commands:
+                run(["install_name_tool", "-add_rpath", SWIFT_LIBS, str(path)], check=True)
+                fixed.append(path)
+    return fixed
+
+
 def mac_dmg(app: Path, out: Path) -> Path:
     # Every piece of the app must be signed to run on Apple silicon; without an Apple developer ID
     # this is an "ad-hoc" signature (people confirm the first open once, see QUICKSTART.md).
@@ -157,6 +183,9 @@ def main() -> None:
     if not MAC:
         local_mode_bundle()
     app = pyinstaller()
+    if MAC:
+        for path in swift_rpath_fixes(app):  # before signing: changing a binary breaks its signature
+            print(f"  can now find Apple's Swift libraries: {path.relative_to(app)}")
     result = mac_dmg(app, out) if MAC else windows_installer(app, out)
     print(f"\nBuilt {result}")
 
