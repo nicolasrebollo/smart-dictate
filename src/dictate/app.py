@@ -324,6 +324,10 @@ def main(argv: list[str] | None = None) -> None:
         from dictate import selftest
 
         raise SystemExit(selftest.run(test.partition("=")[2]))
+    if "--notes" in argv:  # the Notes window, started from the menu (see notes/window.py)
+        from dictate.notes.window import main as notes
+
+        raise SystemExit(notes())
     if sys.platform == "win32":
         with contextlib.suppress(Exception):  # sharp dialogs on high-DPI screens
             import ctypes

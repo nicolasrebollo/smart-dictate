@@ -108,6 +108,7 @@ Everything is in Dictate's **microphone icon**:
 |---|---|
 | (first lines) | what Dictate is doing right now ("Ready: hold Right Ctrl and speak"), and what it uses ("Using: Online: OpenAI") |
 | **Turn off Dictate** / **Turn on Dictate** | Off: the hotkey does nothing and Dictate lets go of the microphone and of the connection. Use it when you want your computer's own dictation, a game or another app that uses the same key, or just a break. The icon goes dim. Choose **Turn on Dictate** to bring it back. |
+| **Notes…** | opens your notes (see below) |
 | **Language** | English, Español, Français |
 | **Hotkey** | the key you hold. Windows: Right Ctrl or Right Alt (useful if your keyboard has no Right Ctrl). Mac: Right Option, Right Command or Fn (for Fn, also set System Settings › Keyboard › "Press 🌐 key to" to **Do Nothing**). |
 | **Microphone** | which microphone to use. "Same as the system" follows your computer's sound settings. |
@@ -127,7 +128,30 @@ hotkey, and other apps can use the microphone at the same time.
 **The icon's colors:** white = ready, red = listening, amber = working, dim = turned off, grey with
 a red line = can't reach the PC or the online service (open the menu: the first line says why).
 
-## 6. Updating and uninstalling
+## 6. Notes
+
+Choose **Notes…** in the menu to open a notes window: folders on the left, your notes in the middle,
+the open note on the right. Notes save as you type, so there's no Save button. Dictation works in
+it like anywhere else: click into a note, hold the hotkey and speak.
+
+- **New note:** **+ New note** (or Ctrl+N; ⌘N on a Mac). It goes into the folder you're looking at.
+- **Folders:** **+ New folder**. Right-click a folder (Control-click on a Mac) to make a folder
+  inside it, rename it or delete it. Drag a note onto a folder to move it there, or use the folder
+  name above the note. Drag a folder onto another folder to put it inside.
+- **Search:** type in the search box. It finds every word you type, in the title and the text
+  (upper/lower case and accents don't matter: "cafe" finds "Café"). The boxes under it narrow the
+  search to **Title only** or **Text only**, and to a period: pick one (Today, Last 7 days…) or type
+  a date (2026-11-20, 2026-11, 2026, or 2026-11-01 to 2026-11-15). The last box picks which date
+  that means: when the note was **Edited** or **Created**. Click **Title** or the date above the
+  list to sort by it.
+- **Deleted by mistake?** Deleted notes wait in **Recently deleted** for 30 days. Open it, pick
+  the note and choose **Restore**.
+
+Your notes stay on this computer, in one file: `%LOCALAPPDATA%\dictate\notes\notes.db` on
+Windows, `~/Library/Application Support/dictate/notes/notes.db` on a Mac. No account, nothing
+online. To back them up, copy that file (with Notes closed). Uninstalling Dictate keeps it.
+
+## 7. Updating and uninstalling
 
 - **Update (Windows):** download the new **Dictate-Windows-Setup.exe** and run it. Your setup and
   settings are kept. (With your own graphics card, Dictate updates its engine the next time it starts.)

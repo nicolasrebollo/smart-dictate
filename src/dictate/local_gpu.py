@@ -112,6 +112,8 @@ def _env() -> dict[str, str]:
         "PYTHONUTF8": "1",
         "DICTATE_QUIET": "1",  # the server doesn't print its link (with the token) into local-server.log
         "PYTHONUNBUFFERED": "1",
+        "HF_XET_HIGH_PERFORMANCE": "1",  # the models download at full speed (see models.FAST_DOWNLOADS)
+        "HF_XET_TELEMETRY_ENABLED": "0",
     }
 
 

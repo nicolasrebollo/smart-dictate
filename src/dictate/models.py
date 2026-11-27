@@ -229,8 +229,13 @@ def download_llm(cfg: Config, name: str) -> Path:
     return Path(hf_hub_download(spec.repo, spec.file, revision=spec.revision, local_dir=dest))
 
 
+# Hugging Face's downloader (hf_xet) fetches each file in many parallel pieces; by default it holds back
+# how many, which can leave a fast connection at a few MB/s. Full speed, and no usage reports.
+FAST_DOWNLOADS = {"HF_XET_HIGH_PERFORMANCE": "1", "HF_HUB_DISABLE_TELEMETRY": "1", "HF_XET_TELEMETRY_ENABLED": "0"}
+
+
 def run_setup(cfg: Config, *, all_variants: bool = False, llms: list[str] | None = None) -> None:
-    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+    os.environ.update(FAST_DOWNLOADS)  # before huggingface_hub is imported (it reads them once)
     for var in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
         os.environ.pop(var, None)
     print(f"Downloading models into {cfg.models_dir}")

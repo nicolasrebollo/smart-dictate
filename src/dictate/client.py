@@ -502,6 +502,11 @@ class Client:
         else:
             self.stop()
 
+    def open_notes(self) -> None:
+        from dictate.notes import open_window
+
+        open_window()
+
     def open_settings(self) -> None:
         path = self.cfg.source_path
         if path is None:

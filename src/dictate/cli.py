@@ -6,6 +6,7 @@ dictate pc           the PC with the GPU: server + client in one tray app
 dictate server       the server only (no hotkey on this machine)
 dictate setup        download the models (on the PC only)
 dictate autostart    start dictate when you log in (on / off)
+dictate notes        open the Notes window
 dictate devices      list microphones
 dictate config       show / edit the settings file
 """
@@ -191,6 +192,12 @@ def _has_models(args: argparse.Namespace) -> bool:
         return False
 
 
+def cmd_notes(args: argparse.Namespace) -> None:
+    from dictate.notes.window import main as notes
+
+    raise SystemExit(notes())
+
+
 def cmd_bench(args: argparse.Namespace) -> None:  # developer tools (PC only)
     cfg = _load(args)
     setup_logging(args.debug)
@@ -227,6 +234,7 @@ def main(argv: list[str] | None = None) -> None:
     a = sub.add_parser("autostart", help="start dictate when you log in")
     a.add_argument("state", choices=["on", "off"])
     a.add_argument("--mode", choices=["pc", "client", "server"], help="default: pc if models are installed")
+    sub.add_parser("notes", help="open the Notes window")
     sub.add_parser("devices", help="list microphones")
     c = sub.add_parser("config", help="show the settings file")
     c.add_argument("--edit", action="store_true", help="open it in your editor")
@@ -249,7 +257,7 @@ def main(argv: list[str] | None = None) -> None:
         args.cmd, args.no_tray = "client", False
     handlers = {
         "client": cmd_client, "app": cmd_app, "pc": cmd_pc, "server": cmd_server, "setup": cmd_setup,
-        "autostart": cmd_autostart,
+        "autostart": cmd_autostart, "notes": cmd_notes,
         "devices": cmd_devices, "config": cmd_config, "bench": cmd_bench,
     }  # fmt: skip
     handlers[args.cmd](args)

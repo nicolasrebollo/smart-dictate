@@ -68,6 +68,24 @@ def _checks() -> dict[str, str]:
             raise RuntimeError("local-mode bundle missing")
         return ", ".join(sorted(p.name for p in b.iterdir()))
 
+    def notes() -> str:
+        import tkinter
+
+        import dictate.notes.window  # noqa: F401
+        from dictate.notes.store import NoteStore
+
+        store = NoteStore()  # in the self-test's own data folder
+        try:
+            folder = store.add_folder("School")
+            store.add_note(folder, "Lecture", "Café at 3")
+            found = store.search("cafe", folder_id=folder)
+            if [n.title for n in found] != ["Lecture"]:
+                raise RuntimeError(f"search found {found}")
+        finally:
+            store.close()
+        tcl = tkinter.Tcl().eval("info patchlevel")  # the window's toolkit is in the app
+        return f"sqlite {__import__('sqlite3').sqlite_version}, Tcl {tcl}, Tk {tkinter.TkVersion}"
+
     def dictation() -> str:
         from websockets.sync.client import connect
 
@@ -95,6 +113,7 @@ def _checks() -> dict[str, str]:
     check("speech detection", vad)
     check("certificates", tls)
     check("local mode bundle", local_bundle)
+    check("notes", notes)
     check("online dictation", dictation)
     return results
 

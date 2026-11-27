@@ -17,11 +17,11 @@ MAC = sys.platform == "darwin"
 
 hidden = [
     "dictate.cloud.speech", "dictate.cloud.chat", "dictate.cloud.claude", "dictate.cloud.keys",
-    "dictate.engine", "dictate.server", "dictate.modes",
+    "dictate.engine", "dictate.server", "dictate.modes", "dictate.notes.window", "sqlite3",
 ]
 if MAC:
-    hidden += ["pystray._darwin", "PyObjCTools.AppHelper", "Quartz", "ApplicationServices", "truststore._macos",
-               "keyring.backends.macOS"]
+    hidden += ["pystray._darwin", "PyObjCTools.AppHelper", "Quartz", "ApplicationServices", "AppKit",
+               "truststore._macos", "keyring.backends.macOS"]
 else:
     hidden += ["pystray._win32", "pynput.keyboard._win32", "pynput.mouse._win32", "truststore._windows",
                "keyring.backends.Windows"]
@@ -32,9 +32,6 @@ excludes = [
     "dictate.asr.parakeet", "nvidia", "onnxruntime.transformers", "onnxruntime.quantization",
     "onnxruntime.tools", "sympy", "matplotlib", "IPython",
 ]
-if MAC:
-    excludes.append("tkinter")  # dialogs use AppleScript on the Mac
-
 datas = [(str(BUILD / "silero" / "silero_vad.onnx"), "silero")]  # speech detection for online mode
 if not MAC:
     datas.append((str(BUILD / "runtime"), "runtime"))  # local mode's setup (packaging/build.py)

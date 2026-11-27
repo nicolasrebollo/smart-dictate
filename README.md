@@ -103,6 +103,7 @@ turned off, grey with a red line = can't reach the speech recognition). Its menu
 |---|---|
 | (first lines) | what Dictate is doing, and where your speech is recognised ("Using: Online: OpenAI") |
 | **Turn off / Turn on Dictate** | off: the hotkey does nothing, the microphone and the connection are released (use the computer's own dictation, a game that needs the key, a break) |
+| **Notes…** | your notes: folders, search by words, title, text or date (see below) |
 | **Language** | English, Spanish, French |
 | **Hotkey** | Right Ctrl / Right Alt on Windows; Right Option / Right Command / Fn on Mac |
 | **Microphone** | which mic, or the system's default |
@@ -116,6 +117,20 @@ Spoken punctuation works in Spanish and French too ("coma", "punto y aparte", "a
 "virgule", "point à la ligne", "point d'interrogation"). A command word you use as a normal word
 stays a word: "the trial period", "a new line of products", "the Oxford comma". The AI cleanup never
 answers or acts on what you dictate, and if its output looks wrong the plain transcript is used.
+
+### Notes
+
+**Notes…** in the menu opens a notes window (Windows and Mac): nested folders on the left, the notes
+in the middle, the open note on the right. It saves as you type, and you can dictate into it. The
+search finds every word in any order, ignoring case and accents, in the title and text or just one
+of them, and narrows by when a note was created or last edited (Today, Last 7 days, or a typed
+`2026-11-20`, `2026-11`, `2026-11-01 to 2026-11-15`). Drag a note onto a folder to move it. Deleted
+notes wait 30 days in **Recently deleted**.
+
+The notes are one SQLite file on the computer, never online: `%LOCALAPPDATA%\dictate\notes\notes.db`
+(Windows), `~/Library/Application Support/dictate/notes/notes.db` (Mac). Uninstalling keeps it. The
+window runs as its own process (`Dictate --notes`, or `dictate notes` from source), because on macOS
+only one thread can draw windows and in the app that thread runs the menu-bar icon.
 
 To teach it names and jargon, add them to `vocabulary` in the `[server]` settings, for example
 `vocabulary = ["Okonkwo", "pgvector"]` (on the PC that runs the server, or in the app's own settings
@@ -171,6 +186,7 @@ half a second to two seconds, depending on the service and the model.
 - **Online:** your recordings and the text go to the service you chose, under its terms. Dictate
   connects to nothing else.
 - Nothing is saved: no audio, no history. Your previous clipboard is restored after each paste.
+  (Notes you write in **Notes…** are kept, in a file on your computer only.)
 
 ## Troubleshooting
 
@@ -182,7 +198,11 @@ half a second to two seconds, depending on the service and the model.
   Settings › Privacy & Security. Check the icon isn't dim (turned off).
 - **Wrong microphone:** pick it under **Microphone** in the menu.
 - **Logs:** `%LOCALAPPDATA%\dictate\logs` (Windows), `~/Library/Logs/dictate` (Mac). Local mode's
-  setup and server log to `local-setup.log` and `local-server.log` there.
+  setup and server log to `local-setup.log` and `local-server.log` there; the Notes window to `notes.log`.
+- **Local setup downloads slowly:** the models come from Hugging Face's servers at full speed (many
+  parallel pieces per file). A first download can start slowly while their servers fetch the files, then
+  speeds up. If it stays at a couple of MB/s, it's usually the connection (Wi-Fi, a VPN, a metered
+  network) or antivirus scanning each file as it arrives.
 
 ## Development
 
