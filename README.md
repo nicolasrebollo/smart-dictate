@@ -11,7 +11,7 @@ places, which you pick when you set up the app:
 | | Where your speech is turned into text | You need | Privacy |
 |---|---|---|---|
 | **Your own GPU** | this Windows PC's NVIDIA graphics card (6 GB or more) | a one-time 6 GB download | nothing leaves the PC |
-| **Your own processor** | any Windows PC, no graphics card needed (a ThinkPad, a laptop with integrated graphics) | a one-time 1.3 GB download | nothing leaves the PC |
+| **Your own processor** | any Windows PC, no graphics card needed (a ThinkPad, a laptop with integrated graphics) | a one-time 2 GB download | nothing leaves the PC |
 | **A PC that shares Dictate** | someone's PC with a GPU (yours, or a friend's) | Tailscale and that PC's link | only between your devices, encrypted |
 | **An online AI service** | OpenAI, Anthropic (Claude), Google (Gemini) or xAI (Grok) | your own API key (pay per use) | your recordings go to that service |
 
@@ -60,13 +60,15 @@ this repository's `uv.lock`, hash-checked) and the models into `%LOCALAPPDATA%\d
 
 For PCs without an NVIDIA card. The same engine runs on the processor alone: the int8 version of the
 speech model (0.1–0.4 s per phrase on a laptop processor, transcribed while you're still talking),
-llama.cpp's processor build and a small cleanup model (Qwen 3.5 0.8B, about a second per sentence; it
-skips sentences that are already clean). The first time, Dictate downloads about 1.3 GB into the same
-`app-runtime` folder (5–15 minutes); it needs about 1.5 GB of memory while it runs. Text appears
-a moment later than with a graphics card, and the processor works hard while you dictate.
+llama.cpp's processor build and a mid-size cleanup model (Qwen 3.5 2B, about 2–3 s per sentence on
+a laptop; it skips sentences that are already clean, and cleans earlier ones while you're still talking).
+The first time, Dictate downloads about 2 GB into the same `app-runtime` folder (5–15 minutes); it needs
+about 2.5 GB of memory while it runs. Text appears a second or two later than with a graphics card, and
+the processor works hard while you dictate.
 
-For better cleanup at about twice the wait, set `model = "gemma-4-e2b"` (or `"qwen3.5-2b"`) in the
-`[server]` settings; Dictate downloads it the next time it starts. The settings it uses are in
+For a faster, sloppier cleanup set `model = "qwen3.5-0.8b"` in the `[server]` settings (about twice as
+fast); for the best, `model = "gemma-4-e2b"` (a little slower than 2B). Dictate downloads it the next
+time it starts. The settings it uses are in
 `src/dictate/config.py` (`_processor_only`); anything you set yourself takes precedence. A source
 checkout can do the same with `uv sync --extra cpu` and `local_device = "cpu"` in `[client]`.
 

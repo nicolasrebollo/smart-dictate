@@ -10,8 +10,8 @@ Dictate needs somewhere to turn your speech into text. When you first open it, i
 - **This computer's graphics card** (Windows with an NVIDIA card only; Dictate only offers it if you
   have one). Free and private: nothing leaves your computer. It downloads about 6 GB once.
 - **This computer's processor** (any Windows PC, for example a ThinkPad or a laptop without a gaming
-  graphics card). Free and private: nothing leaves your computer. It downloads about 1.3 GB once.
-  Your text takes about a second longer to appear than with the other choices.
+  graphics card). Free and private: nothing leaves your computer. It downloads about 2 GB once.
+  Your text takes a second or two longer to appear than with the other choices.
 - **An online AI service**: OpenAI, Anthropic (Claude), Google (Gemini) or xAI (Grok). You need an
   **API key** from that service (an account with a payment method or credit; usually a few cents per
   hour of dictation). Your recordings are sent to that service.

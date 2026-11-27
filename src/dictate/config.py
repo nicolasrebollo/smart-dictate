@@ -406,7 +406,7 @@ def parse_config(text: str, source_path: Path | None = None) -> Config:
     return cfg
 
 
-CPU_CLEANUP_MODEL = "qwen3.5-0.8b"  # ~1 s per sentence on a laptop processor (Gemma: ~2-3 s)
+CPU_CLEANUP_MODEL = "qwen3.5-2b"  # ~2-3 s per sentence on a laptop processor; 0.8B is twice as fast, sloppier
 
 
 def local_device(cfg: Config) -> str:
@@ -418,8 +418,8 @@ def local_device(cfg: Config) -> str:
 
 def _processor_only(cfg: Config, data: dict[str, Any]) -> None:
     """The engine on the processor alone, for PCs without an NVIDIA card: the int8 speech model (about
-    0.1-0.4 s per phrase on a laptop), llama.cpp's processor build and a small cleanup model. Anything
-    set explicitly in the settings file stays as it is."""
+    0.1-0.4 s per phrase on a laptop), llama.cpp's processor build and a mid-size cleanup model (Qwen 3.5
+    2B). Anything set explicitly in the settings file stays as it is."""
 
     def unset(section: str, key: str) -> bool:
         return key not in data.get(section, {})
@@ -435,7 +435,7 @@ def _processor_only(cfg: Config, data: dict[str, Any]) -> None:
     if unset("cleanup", "model") and unset("server", "model"):
         cfg.cleanup.model = cfg.server.model = CPU_CLEANUP_MODEL  # ([server] model is applied after this)
     if unset("cleanup", "timeout_ms"):
-        cfg.cleanup.timeout_ms = 4000  # a slower laptop still gets its cleanup; past this, the rules
+        cfg.cleanup.timeout_ms = 5000  # a slower laptop still gets its cleanup; past this, the rules
 
 
 def ensure_config_file(path: Path | None = None) -> Path:

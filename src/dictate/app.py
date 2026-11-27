@@ -5,7 +5,7 @@ start-at-login and says how to use Dictate:
 
   - a PC that shares Dictate with you: paste its link (the same link the phone uses)
   - this computer's NVIDIA graphics card (Windows): downloads the engine and models once (~6 GB)
-  - this computer's processor (Windows, any PC): a smaller engine, ~1.5 GB, no graphics card needed
+  - this computer's processor (Windows, any PC): a smaller engine, ~2 GB, no graphics card needed
   - an online AI service (OpenAI, Claude, Gemini, Grok): paste an API key
 
 After that it just runs, with its tray / menu-bar icon; "Change how Dictate works…" in the menu goes
@@ -249,11 +249,11 @@ def _setup_cpu(cfg: Any) -> bool:
 
     choice = dialogs.message(
         "Download the speech engine",
-        "Dictate will download about 1.5 GB (Python, the speech recognition and a small AI cleanup model) "
+        "Dictate will download about 2 GB (Python, the speech recognition and an AI cleanup model) "
         f"and keep them in {local_gpu.runtime_dir()}.\n\n"
         "It takes 5 to 15 minutes, depending on your connection. After that Dictate works without the "
         "internet, and nothing you say leaves this computer.\n\n"
-        "It runs on the processor, so your text takes about a second longer to appear than with a "
+        "It runs on the processor, so your text takes a second or two longer to appear than with a "
         "graphics card or an online service, and the computer works harder while you dictate.",
         ("Cancel", "Download"),
     )
@@ -275,7 +275,7 @@ def mode_options(gpu: tuple[str, int] | None, cpu: bool) -> list[tuple[str, str]
     if cpu:
         options.append((
             "cpu",
-            "This computer's processor: free and private, a 1.5 GB download, works on any PC"
+            "This computer's processor: free and private, a 2 GB download, works on any PC"
             + (" (slower than the graphics card)" if gpu is not None else ""),
         ))  # fmt: skip
     options.append(("online", "An online AI service (OpenAI, Claude, Gemini or Grok), with my own API key"))

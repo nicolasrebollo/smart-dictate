@@ -150,8 +150,12 @@ class StreamingSession:
             max_segment_s=cfg.max_segment_s,
         )  # fmt: skip
         self.segments = 0
-        self._buf = np.zeros(SAMPLE_RATE * 30, dtype=np.float32)  # grows by doubling
-        self._n = 0
+        # Only the open phrase's audio is kept (everything before the last cut is already transcribed or
+        # queued), so a 30-minute dictation needs no more memory than a short one. The buffer holds the
+        # samples [_offset, _n) of the whole recording.
+        self._buf = np.zeros(SAMPLE_RATE * 30, dtype=np.float32)  # grows by doubling if a phrase is that long
+        self._n = 0  # samples received so far
+        self._offset = 0  # samples dropped from the front
         self._cuts: list[int] = [0]
         self._futures: list[Future] = []
         self._finalized = False
@@ -159,11 +163,12 @@ class StreamingSession:
     def feed(self, block: FloatArray, probs: list[float]) -> None:
         if self._finalized:
             return
-        if self._n + len(block) > len(self._buf):
-            grown = np.zeros(max(len(self._buf) * 2, self._n + len(block)), dtype=np.float32)
-            grown[: self._n] = self._buf[: self._n]
+        held = self._n - self._offset
+        if held + len(block) > len(self._buf):
+            grown = np.zeros(max(len(self._buf) * 2, held + len(block)), dtype=np.float32)
+            grown[:held] = self._buf[:held]
             self._buf = grown
-        self._buf[self._n : self._n + len(block)] = block
+        self._buf[held : held + len(block)] = block
         self._n += len(block)
         for p in probs:
             cut = self.segmenter.push(p)
@@ -171,8 +176,19 @@ class StreamingSession:
                 self._commit_until(cut)
 
     def _audio(self, start_frame: int, end_frame: int | None) -> tuple[FloatArray, list[float]]:
+        start = max(start_frame * FRAME, self._offset)
         end = self._n if end_frame is None else min(self._n, end_frame * FRAME)
-        return self._buf[start_frame * FRAME : end].copy(), self.segmenter.probs[start_frame:end_frame]
+        audio = self._buf[start - self._offset : max(start, end) - self._offset].copy()
+        return audio, self.segmenter.probs[start_frame:end_frame]
+
+    def _forget_until(self, frame: int) -> None:
+        """Audio before `frame` won't be needed again: drop it."""
+        cut = min(frame * FRAME, self._n)
+        if cut <= self._offset:
+            return
+        keep = self._n - cut
+        self._buf[:keep] = self._buf[cut - self._offset : self._n - self._offset]
+        self._offset = cut
 
     def _transcribe_segment(self, audio: FloatArray, probs: list[float]) -> str:
         c = self.cfg
@@ -185,6 +201,7 @@ class StreamingSession:
         start = self._cuts[-1]
         self._cuts.append(cut)
         audio, probs = self._audio(start, cut)
+        self._forget_until(cut)  # (the phrase has its own copy now)
 
         def run() -> str:
             text = self._transcribe_segment(audio, probs)

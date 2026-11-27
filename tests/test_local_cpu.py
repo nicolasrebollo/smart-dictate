@@ -15,7 +15,7 @@ CPU = '[client]\nmode = "local"\nlocal_device = "cpu"\n'
 def test_the_processor_variant_picks_its_engine() -> None:
     c = parse_config(CPU)
     assert (c.asr.device, c.asr.quantization, c.llm.build, c.llm.gpu_layers) == ("cpu", "int8", "cpu", 0)
-    assert c.cleanup.model == CPU_CLEANUP_MODEL and c.cleanup.timeout_ms == 4000
+    assert c.cleanup.model == CPU_CLEANUP_MODEL == "qwen3.5-2b" and c.cleanup.timeout_ms == 5000
     assert models.llama_server_exe(c).parent.name.endswith("-cpu")
     assert modes.describe(c) == "This computer's processor"
 

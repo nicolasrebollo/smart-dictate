@@ -3,7 +3,7 @@ like `dictate pc` from a source checkout, but with no terminal. Two variants ([c
 
   gpu  an NVIDIA graphics card: the full speech model and Gemma for the cleanup (about 6 GB to download)
   cpu  the processor only, for any PC (a ThinkPad, a laptop with integrated graphics): the int8 speech
-       model, llama.cpp's processor build and a small cleanup model (about 1.5 GB to download)
+       model, llama.cpp's processor build and a mid-size cleanup model (about 2 GB to download)
 
 The installer stays small, so the first time someone picks one, the app downloads it into its own folder
 (%LOCALAPPDATA%\\dictate\\app-runtime):
@@ -45,7 +45,7 @@ Report = Callable[[str, float | None], None]  # (what's happening, fraction done
 # What each variant's setup says while it works.
 _STEPS = {
     "gpu": ("Downloading the GPU libraries (about 3 GB)…", "Downloading the speech and AI models (about 3 GB)…"),
-    "cpu": ("Downloading the speech engine (about 150 MB)…", "Downloading the speech and AI models (about 1.3 GB)…"),
+    "cpu": ("Downloading the speech engine (about 150 MB)…", "Downloading the speech and AI models (about 2 GB)…"),
 }
 _REQUIREMENTS = {"gpu": "requirements.txt", "cpu": "requirements-cpu.txt"}
 

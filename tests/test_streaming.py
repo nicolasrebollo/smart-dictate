@@ -210,3 +210,27 @@ def test_join_chunks_starts_new_paragraph_after_a_list() -> None:
     joined = join_chunks(["Steps:\n1. Clone it.\n2. Run it.", "Then tell me."])
     assert joined == "Steps:\n1. Clone it.\n2. Run it.\n\nThen tell me."
     assert join_chunks(["Version 2. Then ship it.", "Done."]) == "Version 2. Then ship it. Done."
+
+
+def test_a_long_dictation_keeps_only_the_open_phrase_in_memory() -> None:
+    """20 minutes of talking: every sample reaches exactly one phrase, in order, and the session never
+    holds more than its starting buffer (30 s), however long it runs."""
+    worker = ASRWorker(FakeASR(), threading.Lock())
+    sess = StreamingSession(worker, StreamConfig(pause_ms=300, min_segment_s=0.5, pad_ms=0))
+    seen: list[np.ndarray] = []
+    sess._transcribe_segment = lambda audio, probs: (seen.append(audio), "x")[1]
+    rng = np.random.default_rng(1)
+    pattern = [(0.9, int(rng.integers(1500, 9000))) if i % 2 == 0 else (0.0, 600) for i in range(440)]
+    counter = 0
+    biggest = 0
+    for prob, ms in pattern:  # each block carries its own running sample numbers, to check the order
+        for _ in range(frames(ms)):
+            sess.feed((np.arange(counter, counter + FRAME) % 1_000_000).astype(np.float32), [prob])
+            counter += FRAME
+            biggest = max(biggest, len(sess._buf))
+    sess.finalize()
+    assert counter / 16000 / 60 > 20 and sess.segments > 150
+    joined = np.concatenate(seen)
+    expected = (np.arange(counter) % 1_000_000).astype(np.float32)  # (exact in float32, unlike 21 million)
+    assert len(joined) == counter and np.array_equal(joined, expected)
+    assert biggest == 16000 * 30  # never grew: about 1.9 MB, not 77 MB for 20 minutes
