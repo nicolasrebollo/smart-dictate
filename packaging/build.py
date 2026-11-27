@@ -131,26 +131,55 @@ def windows_installer(app_dir: Path, out: Path) -> Path:
 SWIFT_LIBS = "/usr/lib/swift"
 
 
+def _linked_libs(otool_L: str) -> list[str]:
+    """`otool -L` output -> the libraries a binary links (the first line is the file itself)."""
+    return [line.strip().split(" (")[0] for line in otool_L.splitlines()[1:] if line.strip()]
+
+
+def _rpaths(otool_l: str) -> list[str]:
+    """`otool -l` output -> the binary's search paths (LC_RPATH), in order."""
+    found, in_rpath = [], False
+    for line in otool_l.splitlines():
+        line = line.strip()
+        if line.startswith("cmd "):
+            in_rpath = line == "cmd LC_RPATH"
+        elif in_rpath and line.startswith("path "):
+            found.append(line[len("path ") :].rsplit(" (offset", 1)[0])
+            in_rpath = False
+    return found
+
+
 def swift_rpath_fixes(app: Path, run=subprocess.run) -> list[Path]:
     """Binaries in the app that link Apple's Swift libraries (`@rpath/libswift*.dylib`) without a way to
     find them, after which they get one (returns them).
 
-    Those libraries are part of macOS (in /usr/lib/swift), never inside the app. PyInstaller points every
-    binary's search path at the app's own folders, so e.g. PyObjC's CoreMedia (computer audio) failed to
-    load: "tried …/Frameworks/CoreMedia/../libswiftCoreMedia.dylib (no such file)"."""
+    Those libraries are part of macOS (in /usr/lib/swift), never inside the app. PyInstaller gives such a
+    binary one search path, into the app's own folders (`@loader_path/..`), so e.g. PyObjC's CoreMedia
+    (computer audio) failed to load: "tried …/Frameworks/CoreMedia/../libswiftCoreMedia.dylib (no such
+    file)". When the Swift libraries are the only thing found through it, that search path is swapped for
+    /usr/lib/swift. (Adding a second one doesn't work: these binaries have no room left in their headers,
+    and "/usr/lib/swift" takes exactly the space "@loader_path/.." did.)"""
     fixed = []
     for folder, _dirs, files in os.walk(app):  # (doesn't follow the bundle's symlinks: each file once)
         for name in files:
             path = Path(folder) / name
             if path.suffix not in (".so", ".dylib") or path.is_symlink():
                 continue
-            links = run(["otool", "-L", str(path)], capture_output=True, text=True).stdout
-            if "@rpath/libswift" not in links:
+            libs = _linked_libs(run(["otool", "-L", str(path)], capture_output=True, text=True).stdout)
+            via_rpath = [lib for lib in libs if lib.startswith("@rpath/")]
+            if not any(lib.startswith("@rpath/libswift") for lib in via_rpath):
                 continue
-            commands = run(["otool", "-l", str(path)], capture_output=True, text=True).stdout
-            if f"path {SWIFT_LIBS} " not in commands:
-                run(["install_name_tool", "-add_rpath", SWIFT_LIBS, str(path)], check=True)
-                fixed.append(path)
+            rpaths = _rpaths(run(["otool", "-l", str(path)], capture_output=True, text=True).stdout)
+            if SWIFT_LIBS in rpaths:
+                continue
+            if rpaths and all(lib.startswith("@rpath/libswift") for lib in via_rpath):
+                args = ["-rpath", rpaths[0], SWIFT_LIBS]
+                for extra in rpaths[1:]:
+                    args += ["-delete_rpath", extra]
+            else:  # it also finds libraries in the app this way: keep that, add the system's Swift
+                args = ["-add_rpath", SWIFT_LIBS]
+            run(["install_name_tool", *args, str(path)], check=True)
+            fixed.append(path)
     return fixed
 
 

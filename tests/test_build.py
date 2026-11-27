@@ -1,5 +1,5 @@
 """The Mac build's fix for binaries that link Apple's Swift libraries (they live in macOS, not the app).
-Runs anywhere: otool and install_name_tool are stand-ins here."""
+Runs anywhere: otool and install_name_tool are stand-ins here, answering as they do on a Mac."""
 
 import importlib.util
 import subprocess
@@ -11,28 +11,60 @@ build = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(build)
 
 
-def test_only_binaries_that_need_swift_get_its_search_path(tmp_path) -> None:
-    frameworks = tmp_path / "Dictate.app" / "Contents" / "Frameworks"
-    (frameworks / "CoreMedia").mkdir(parents=True)
-    needs = frameworks / "CoreMedia" / "_CoreMedia.cpython-312-darwin.so"
-    has_it = frameworks / "CoreMedia" / "_inlines.cpython-312-darwin.so"
-    plain = frameworks / "_ssl.cpython-312-darwin.so"
-    for f in (needs, has_it, plain, frameworks / "base_library.zip"):
-        f.write_bytes(b"")
-    calls = []
+def _otool_L(path: str, libs: list[str]) -> str:
+    return f"{path}:\n" + "".join(f"\t{lib} (compatibility version 1.0.0, current version 1.0.0)\n" for lib in libs)
+
+
+def _otool_l(rpaths: list[str]) -> str:
+    out = "Load command 0\n      cmd LC_SEGMENT_64\n  cmdsize 72\n  segname __PAGEZERO\n"
+    for i, rp in enumerate(rpaths, 1):
+        out += f"Load command {i}\n          cmd LC_RPATH\n      cmdsize 32\n         path {rp} (offset 12)\n"
+    return out
+
+
+SYSTEM = ["/System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia", "/usr/lib/libSystem.B.dylib"]
+SWIFT = "@rpath/libswiftCoreMedia.dylib"
+
+
+def test_parsing_otool() -> None:
+    assert build._linked_libs(_otool_L("/x.so", [SWIFT, *SYSTEM])) == [SWIFT, *SYSTEM]
+    assert build._rpaths(_otool_l(["@loader_path/..", "/usr/lib/swift"])) == ["@loader_path/..", "/usr/lib/swift"]
+    assert build._rpaths(_otool_l([])) == []
+
+
+def test_swift_libraries_are_found_in_macos(tmp_path) -> None:
+    fw = tmp_path / "Dictate.app" / "Contents" / "Frameworks"
+    (fw / "CoreMedia").mkdir(parents=True)
+    files = {  # name -> (linked libraries, search paths), as PyInstaller leaves them
+        "CoreMedia/_CoreMedia.cpython-312-darwin.so": ([SWIFT, *SYSTEM], ["@loader_path/.."]),
+        "CoreMedia/_inlines.cpython-312-darwin.so": ([SWIFT, *SYSTEM], ["@loader_path/..", "@loader_path"]),
+        "mixed.so": ([SWIFT, "@rpath/libbundled.dylib", *SYSTEM], ["@loader_path"]),
+        "done.so": ([SWIFT], ["/usr/lib/swift"]),
+        "_ssl.cpython-312-darwin.so": (["@rpath/libssl.3.dylib", *SYSTEM], ["@loader_path"]),
+    }
+    for name in [*files, "base_library.zip"]:
+        (fw / name).write_bytes(b"")
+    changes: dict[str, list[str]] = {}
 
     def run(args, **kw):
-        calls.append(args)
         path = args[-1]
+        name = Path(path).relative_to(fw).as_posix()
         out = ""
         if args[:2] == ["otool", "-L"]:
-            out = "@rpath/libswiftCoreMedia.dylib (compatibility 1.0.0)" if "CoreMedia" in path else "libSystem"
-        elif args[:2] == ["otool", "-l"] and "_inlines" in path:
-            out = "cmd LC_RPATH\n path /usr/lib/swift (offset 12)"
+            out = _otool_L(path, files[name][0])
+        elif args[:2] == ["otool", "-l"]:
+            out = _otool_l(files[name][1])
+        elif args[0] == "install_name_tool":
+            changes[name] = args[1:-1]
         return subprocess.CompletedProcess(args, 0, out, "")
 
     fixed = build.swift_rpath_fixes(tmp_path / "Dictate.app", run=run)
-    assert fixed == [needs]
-    assert ["install_name_tool", "-add_rpath", "/usr/lib/swift", str(needs)] in calls
-    assert not any(c[0] == "install_name_tool" and c[-1] != str(needs) for c in calls)
-    assert not any(c[-1].endswith(".zip") for c in calls)
+    assert {p.relative_to(fw).as_posix() for p in fixed} == set(changes)
+    # its only search path served the Swift library: swap it (no room in the header to add one)
+    assert changes["CoreMedia/_CoreMedia.cpython-312-darwin.so"] == ["-rpath", "@loader_path/..", "/usr/lib/swift"]
+    assert changes["CoreMedia/_inlines.cpython-312-darwin.so"] == [
+        "-rpath", "@loader_path/..", "/usr/lib/swift", "-delete_rpath", "@loader_path",
+    ]  # fmt: skip
+    # it also finds a library in the app that way: keep that, add the system's Swift
+    assert changes["mixed.so"] == ["-add_rpath", "/usr/lib/swift"]
+    assert "done.so" not in changes and "_ssl.cpython-312-darwin.so" not in changes
